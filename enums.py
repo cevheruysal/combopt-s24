@@ -1,0 +1,26 @@
+from enum import Enum
+
+class EdgeDirection(Enum):
+    UNDIRECTED = 0
+    DIRECTED = 1
+    BIDIRECTED = 2
+
+class GraphDirection(Enum):
+    UNDIRECTED = 0
+    DIRECTED = 1
+    BIDIRECTED = 2
+    MIXED = 3
+
+
+class MinDistanceAlgorithmsEnum(Enum):
+    AUTOMATIC = 0
+    TOPOLOGICAL_SORT = 1
+    DIJKSTRA = 2
+    BELLMAN_FORD = 3
+    FLOYD_WARSHALL = 4
+    A_STAR = 5
+
+class MinSpanningTreeAlgorithmsEnum(Enum):
+    AUTOMATIC = 0
+    PRIMS = 1
+    KRUSKALS = 2
