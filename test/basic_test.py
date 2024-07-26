@@ -142,21 +142,21 @@ class TestGraph(unittest.TestCase):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
         e2 = Edge(2, 2, 1, 4.5, EdgeDirection.DIRECTED)
         g = Graph(1, E=[e1, e2])
-        self.assertTrue(g.isCyclic())
+        self.assertTrue(g.is_cyclic())
 
 
     def test_ungraph_isNotCyclic(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.UNDIRECTED)
         e2 = Edge(2, 2, 1, 4.5, EdgeDirection.UNDIRECTED)
         g = Graph(1, E=[e1, e2])
-        self.assertFalse(g.isCyclic())
+        self.assertFalse(g.is_cyclic())
 
     
     def test_bigraph_isNotCyclic(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.BIDIRECTED)
         e2 = Edge(2, 2, 1, 4.5, EdgeDirection.BIDIRECTED)
         g = Graph(1, E=[e1, e2])
-        self.assertFalse(g.isCyclic())
+        self.assertFalse(g.is_cyclic())
 
 
     def test_digraph_isCyclic2(self):
@@ -165,7 +165,7 @@ class TestGraph(unittest.TestCase):
         e3 = Edge(3, 3, 1, 4.5, EdgeDirection.DIRECTED)
         
         g = Graph(1, E=[e1, e2, e3])
-        self.assertTrue(g.isCyclic())
+        self.assertTrue(g.is_cyclic())
         
 
     def test_digraph_isCyclic3(self):
@@ -181,13 +181,15 @@ class TestGraph(unittest.TestCase):
         e8 = Edge(8, 4, 5, 1, EdgeDirection.DIRECTED)
 
         g = Graph(1, V, E=[e1, e2, e3, e4, e5, e6, e7, e8])
-        self.assertFalse(g.isCyclic())
+        isCyclic = g.is_cyclic()
+        self.assertFalse(isCyclic)
+        self.assertEqual(isCyclic, not g.acyclical)
 
 
     def test_graph_str(self):
         e = Edge(1, 1, 2, 4.5)
         g = Graph(1, E=[e])
-        expected_output = "Metadata of Graph1:\nThis is an directed acyclic graph with all positive edge weights\n"
+        expected_output = "Metadata of Graph1:\nThis is a directed acyclic graph with all positive edge weights\n"
         self.assertEqual(str(g), expected_output)
 
 

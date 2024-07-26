@@ -6,12 +6,14 @@ from config import RANDOM_SEED
 from notation import Vertex, Edge, Graph
 from enums import EdgeDirection
 
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
 
 def generate_random_directed_connected_graph(Id, num_vertices:int, num_edges:int, weight_range:Tuple[float, float] = (0, 1)):
     assert num_edges >= num_vertices - 1, "Number of edges must be at least num_vertices - 1 to ensure connectivity"

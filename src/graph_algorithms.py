@@ -9,12 +9,14 @@ from enums import MinDistanceAlgorithmsEnum, MinSpanningTreeAlgorithmsEnum
 from graph_utils import delta, minimum_cost_edge_in_delta
 from notation import Vertex, Edge, Graph, Tree
 
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
 
 class UtilAlgorithms:
     @staticmethod
@@ -44,12 +46,13 @@ class UtilAlgorithms:
         logger.info("Topological sorting finished, no possible sorting found. The graph may have cycles.")
         return None
 
+
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
         self.graph = G
 
     def run(self, start_vertex:int, goal_vertex:int, 
-            use_algorithm:MinDistanceAlgorithmsEnum=MinDistanceAlgorithmsEnum.AUTOMATIC) -> Optional[dict]:
+            use_algorithm:MinDistanceAlgorithmsEnum = MinDistanceAlgorithmsEnum.AUTOMATIC) -> Optional[dict]:
         result = None
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find minimum distance")
@@ -60,18 +63,21 @@ class MinDistanceAlgorithms:
                 case 4: result = self.floyd_warshall_min_dist_algorithm(start_vertex)
                 case 5: result = self.a_star_min_dist_algorithm(start_vertex, goal_vertex)
                 case _: logger.error("Algorithm doesn't exist returning no solution"); return None
+            return result
 
         if self.graph.direction and self.graph.acyclical:
             logger.info("The graph is directed and acyclic, using Topological Sort to find minimum distance")
             result = self.topological_sort_min_dist_algorithm(start_vertex)
-        if self.graph.direction and not self.graph.has_negative_weight:
+        elif self.graph.direction and not self.graph.has_negative_weight:
             logger.info("The graph is directed and doesn't have negative weights, using Dijkstra's to find minimum distance")
             result = self.dijkstras_min_dist_algorithm(start_vertex)
-        if self.graph.has_negative_weight:
+        elif self.graph.has_negative_weight:
             logger.info("The graph is either undirected or there is negative weighted edges, using Bellman-Ford's to find minimum distance")
             result = self.bellman_fords_min_dist_algorithm(start_vertex)
-        if result is None: logger.error("Automatic selection couldn't find any solutions")
-        logger.error("Automatic selection didn't run any minimum distance algorithm") 
+        else:
+            logger.error("Automatic selection didn't run any minimum distance algorithm")
+        if result is None: 
+            logger.error("Automatic selection couldn't find any solutions") 
         return result
 
     def topological_sort_min_dist_algorithm(self, start_vertex:int) -> dict:
@@ -200,7 +206,6 @@ class MinSpanningTreeAlgorithms:
     def kruskals_min_spanning_tree_algorithm(self):
         T = Tree(Id="MST_Kruskals", V=[], E=[])
         pass
-
 
 
 class NetworkFlowAlgorithms:

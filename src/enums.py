@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class EdgeDirection(Enum):
     UNDIRECTED = 0
     DIRECTED = 1

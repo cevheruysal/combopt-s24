@@ -1,9 +1,9 @@
 import logging
 from typing import Optional, List, Dict, Set, Tuple, Union
-import random as r
 
 from enums import EdgeDirection, GraphDirection
-from config import EDGE_PROB, EDGE_ORIENTATION_PROB, RANDOM_SEED, ROUND_TO
+from config import ROUND_TO
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -23,7 +23,7 @@ class Vertex:
         return Vertex(self.id, self.roots.copy(), self.leafs.copy())
     
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.id, self.roots, self.roots)
     
     def __eq__(self, other):
         if isinstance(other, Vertex):
@@ -77,19 +77,22 @@ class Edge:
 
 class Graph:
     def __init__(self, Id:Union[int,str], V:List[Vertex] = [], E:List[Edge] = []):
-        self.id = Id 
-        self.vertices = {} 
-        self.edges = {}
-        self.has_negative_weight = None
-        self.direction = None
-        self.acyclical = None
+        self.id: int = Id 
+        self.vertices: Dict[int, Vertex] = {}
+        self.edges: Dict[Tuple[int, int], Edge] = {}
+        self.connected_components: Set[frozenset] = set()
+        self.has_negative_weight: Optional[bool] = None
+        self.direction: Optional[str] = None
+        self.acyclical: Optional[bool] = None
 
         self.init_vertices(V)
         self.init_edges(E)
         self.update_meta()
 
     def init_vertices(self, V:List[Vertex]) -> None:
-        self.vertices = {v.id: v for v in sorted(V, key=lambda x: x.id)}
+        for v in sorted(V, key=lambda x: x.id):
+            self.vertices[v.id] = v
+            self.connected_components.add(frozenset([v.id]))
     
     def init_edge(self, e:Edge):
         try:
@@ -99,7 +102,8 @@ class Graph:
                 if v not in self.vertices:
                     logger.error(f"Vertex not found: {v}")
                     self.vertices[v] = Vertex(v)
-                    logger.warning(f"New vertice is created with id: {v}")
+                    logger.warning(f"New vertex created with id: {v}")
+                    self.connected_components.add(frozenset([v]))
 
             self.vertices[v1].leafs.add(v2)
             self.vertices[v2].roots.add(v1)
@@ -125,10 +129,10 @@ class Graph:
             return GraphDirection[directions.pop().name]
         return GraphDirection.MIXED
 
-    def isCyclic(self) -> bool:
+    def is_cyclic(self) -> bool:
         visited, rec_stack, parent = set(), set(), {}
 
-        def isCyclicDFS(v:Vertex):
+        def is_cyclic_dfs(v:Vertex) -> bool:
             visited.add(v.id); rec_stack.add(v.id)
             
             for leaf_id in v.leafs:
@@ -139,14 +143,14 @@ class Graph:
 
                 if edge_type == EdgeDirection.DIRECTED:
                     if leaf_id not in visited:
-                        if isCyclicDFS(leaf_vertex): return True
+                        if is_cyclic_dfs(leaf_vertex): return True
                     elif leaf_id in rec_stack: return True
                     
                 elif (edge_type == EdgeDirection.UNDIRECTED or 
                       edge_type == EdgeDirection.BIDIRECTED):
                     if leaf_id not in visited:
                         parent[leaf_id] = v.id
-                        if isCyclicDFS(leaf_vertex): return True
+                        if is_cyclic_dfs(leaf_vertex): return True
                     elif parent[v.id] != leaf_id: return True
 
             rec_stack.remove(v.id)
@@ -154,14 +158,27 @@ class Graph:
 
         for v in self.vertices.values():
             if v.id not in visited:
-                if isCyclicDFS(v):
+                if is_cyclic_dfs(v):
                     return True
         return False
+    
+    def get_connected_components(self):
+        for v1, v2 in self.edges.keys():
+            c1 = next(comp for comp in self.connected_components if v1 in comp)
+            c2 = next(comp for comp in self.connected_components if v2 in comp)
+
+            # If c1 and c2 are distinct components, include the weighted_edge in our solution, and merge the two components
+            if c1 != c2:
+                self.connected_components.remove(c1)
+                self.connected_components.remove(c2)
+                self.connected_components.add(c1.union(c2))
+        return len(self.connected_components)
 
     def update_meta(self):
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
         self.direction = self.get_graph_direction()
-        self.acyclical = self.isCyclic()
+        self.acyclical = not self.is_cyclic()
+        self.connected = self.get_connected_components() <= 1
 
     def copy(self):
         return Graph(self.id, [v.copy() for v in self.vertices.values()], 
@@ -189,7 +206,7 @@ class Forest(Graph):
     def __init__(self, Id: int, V: List[Vertex] = [], E: List[Edge] = []):
         # forests are cycle-free graphs
         super().__init__(Id, V, E)
-        if self.isCyclic():
+        if not self.acyclical:
             raise ValueError("A forest cannot contain cycles")
 
 
@@ -197,5 +214,5 @@ class Tree(Forest):
     def __init__(self, Id: int, V: List[Vertex] = [], E: List[Edge] = []):
         # trees are cycle-free AND connected graphs
         super().__init__(Id, V, E)
-        if not self.is_connected():
+        if not self.connected:
             raise ValueError("A tree must be connected")
