@@ -6,7 +6,7 @@ import numpy as np
 from random import choice
 
 from enums import MinDistanceAlgorithmsEnum, MinSpanningTreeAlgorithmsEnum
-from graph_utils import delta
+from graph_utils import delta, minimum_cost_edge_in_delta
 from notation import Vertex, Edge, Graph, Tree
 
 logging.basicConfig(
@@ -23,29 +23,26 @@ class UtilAlgorithms:
             logger.warning("No edges present to perform topological sorting")
             return None
         
-        sorted_vertices = []
-        all_vertices_dict = {id: v.copy() for id, v in G.vertices.items()}
+        topological_order = []
         no_root_vertices_list = [v.copy() for v in G.vertices.values() if len(v.roots) == 0]
-        remaining_edges_dict = {(e.end_vertex_ids[0], e.end_vertex_ids[1]): 1 for e in G.edges.values()}
+        all_vertices_dict = {id: v.copy() for id, v in G.vertices.items() if len(v.roots) > 0}
 
         while no_root_vertices_list:
             root_vertex = no_root_vertices_list.pop(0)
-            sorted_vertices.append(root_vertex.id)
+            topological_order.append(root_vertex.id)
             
             for leaf_id in root_vertex.leafs:
                 leaf_vertex = all_vertices_dict[leaf_id]
                 leaf_vertex.roots.remove(root_vertex.id)
                 
-                remaining_edges_dict[(root_vertex.id, leaf_id)] = 0
-                
                 if len(leaf_vertex.roots) == 0:
                     no_root_vertices_list.append(leaf_vertex.copy())
 
-        if any(remaining_edges_dict.values()):
-            logger.info("Topological sorting finished no possible sorting found the graph is acyclical")
-            return None
+        if len(topological_order) == len(G.vertices):
+            return topological_order
         
-        return sorted_vertices
+        logger.info("Topological sorting finished, no possible sorting found. The graph may have cycles.")
+        return None
 
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
@@ -53,33 +50,34 @@ class MinDistanceAlgorithms:
 
     def run(self, start_vertex:int, goal_vertex:int, 
             use_algorithm:MinDistanceAlgorithmsEnum=MinDistanceAlgorithmsEnum.AUTOMATIC) -> Optional[dict]:
+        result = None
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find minimum distance")
             match use_algorithm.value:
-                case 1: return self.topological_sort_min_dist_algorithm(start_vertex)
-                case 2: return self.dijkstras_min_dist_algorithm(start_vertex)
-                case 3: return self.bellman_fords_min_dist_algorithm(start_vertex)
-                case 4: return self.floyd_warshall_min_dist_algorithm(start_vertex)
-                case 5: return self.a_star_min_dist_algorithm(start_vertex, goal_vertex)
+                case 1: result = self.topological_sort_min_dist_algorithm(start_vertex)
+                case 2: result = self.dijkstras_min_dist_algorithm(start_vertex)
+                case 3: result = self.bellman_fords_min_dist_algorithm(start_vertex)
+                case 4: result = self.floyd_warshall_min_dist_algorithm(start_vertex)
+                case 5: result = self.a_star_min_dist_algorithm(start_vertex, goal_vertex)
                 case _: logger.error("Algorithm doesn't exist returning no solution"); return None
 
         if self.graph.direction and self.graph.acyclical:
             logger.info("The graph is directed and acyclic, using Topological Sort to find minimum distance")
-            return self.topological_sort_min_dist_algorithm(start_vertex)
+            result = self.topological_sort_min_dist_algorithm(start_vertex)
         if self.graph.direction and not self.graph.has_negative_weight:
             logger.info("The graph is directed and doesn't have negative weights, using Dijkstra's to find minimum distance")
-            return self.dijkstras_min_dist_algorithm(start_vertex)
+            result = self.dijkstras_min_dist_algorithm(start_vertex)
         if self.graph.has_negative_weight:
             logger.info("The graph is either undirected or there is negative weighted edges, using Bellman-Ford's to find minimum distance")
-            return self.bellman_fords_min_dist_algorithm(start_vertex)
-        
-        logger.error("ERROR: Automatic selection didn't run any minimum distance algorithm")
-        return None
+            result = self.bellman_fords_min_dist_algorithm(start_vertex)
+        if result is None: logger.error("Automatic selection couldn't find any solutions")
+        logger.error("Automatic selection didn't run any minimum distance algorithm") 
+        return result
 
     def topological_sort_min_dist_algorithm(self, start_vertex:int) -> dict:
         distances = {v.id: float('inf') for v in self.graph.vertices.values()}
         distances[start_vertex] = 0
-        for vertex_id in self.graph.topological_sort():
+        for vertex_id in UtilAlgorithms.topological_sort(self.graph):
             if distances[vertex_id] == float('inf'):
                 continue
             for neighbor in self.graph.vertices[vertex_id].leafs:
@@ -134,11 +132,11 @@ class MinDistanceAlgorithms:
         previous_vertex = np.array([-1]*(v_size**2)).reshape(v_size, v_size)
 
         for (v1_id,v2_id), e in self.graph.edges.items():
-            distance_matrix[v1_id, v2_id] = e.weight
-            previous_vertex[v1_id, v2_id] = v1_id
+            distance_matrix[v1_id-1, v2_id-1] = e.weight
+            previous_vertex[v1_id-1, v2_id-1] = v1_id
         for id, v in self.graph.vertices.items():
-            distance_matrix[id, id] = 0
-            previous_vertex[id, id] = id
+            distance_matrix[id-1, id-1] = 0
+            previous_vertex[id-1, id-1] = id
         
         for k in range(v_size):
             for i in range(v_size):
@@ -147,7 +145,7 @@ class MinDistanceAlgorithms:
                         distance_matrix[i, j] = distance_matrix[i, k] + distance_matrix[k, j]
                         previous_vertex[i, j] = previous_vertex[k, j]
         
-        return {id: min_dist for id, min_dist in zip(self.graph.vertices.keys() ,distance_matrix[start_vertex, :])}
+        return {id: min_dist for id, min_dist in zip(self.graph.vertices.keys() ,distance_matrix[start_vertex-1, :])}
 
 
     def a_star_min_dist_algorithm(self, start_vertex:int, goal_vertex:int, heuristic) -> Optional[dict]:
@@ -189,18 +187,20 @@ class MinSpanningTreeAlgorithms:
 
     def prims_min_spanning_tree_algorithm(self):
         v_0 = choice(self.graph.vertices)
-        T = Tree(Id="MST", V=[v_0], E=[])
+        T = Tree(Id="MST_Prims", V=[v_0], E=[])
 
         while not T.vertices.issuperset(self.graph.vertices):
             delta_edges = delta(T.vertices, self)
-            # add the edge e that has the minimum weight in delta(V_T)
-            # T = T + e
+            min_cost_edge = minimum_cost_edge_in_delta(delta)
+            T.init_edge(min_cost_edge)
         
         return T
 
 
     def kruskals_min_spanning_tree_algorithm(self):
+        T = Tree(Id="MST_Kruskals", V=[], E=[])
         pass
+
 
 
 class NetworkFlowAlgorithms:

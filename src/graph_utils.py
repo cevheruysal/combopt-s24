@@ -1,6 +1,6 @@
 import logging 
 import random as r
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from config import RANDOM_SEED
 from notation import Vertex, Edge, Graph
@@ -60,3 +60,15 @@ def delta(V_prime:Dict[int,Vertex], G:Graph) -> Dict[str, Set[Edge]]:
             else: delta_edges["un-bi"].add(e.copy())
 
     return delta_edges
+
+def minimum_cost_edge_in_delta(delta:Dict[str, Set[Edge]]) -> Optional[Edge]:
+    min_edge = None
+    min_weight = float("inf")
+
+    for set in delta.values():
+        for edge in set:
+            if edge.weight < min_weight:
+                min_edge = edge
+                min_weight = min_edge.weight
+
+    return min_edge.copy()
