@@ -91,7 +91,7 @@ class TestGraph(unittest.TestCase):
         v2 = Vertex(2)
         e = Edge(1, 1, 2, 4.5)
         g = Graph(1, [v1, v2], [])
-        g.init_edge(e)
+        g.add_edge(e)
         self.assertEqual(len(g.edges), 1)
         self.assertIn((1, 2), g.edges)
         self.assertIn(2, g.vertices[1].leafs)
@@ -105,7 +105,7 @@ class TestGraph(unittest.TestCase):
         e3 = Edge(3, 1, 3, 3, EdgeDirection.UNDIRECTED)
         
         g = Graph(1, [v1, v2], [e1, e2])
-        g.init_edge(e3)
+        g.add_edge(e3)
         self.assertEqual(len(g.edges), 3)
         self.assertIn((1, 3), g.edges)
         self.assertIn(3, g.vertices[1].roots)
@@ -129,9 +129,9 @@ class TestGraph(unittest.TestCase):
 
         g = Graph(1, [], [e1])
         self.assertEqual(g.get_graph_direction(), GraphDirection.DIRECTED)
-        g.init_edge(e2)
+        g.add_edge(e2)
         self.assertEqual(g.get_graph_direction(), GraphDirection.DIRECTED)
-        g.init_edge(e3)
+        g.add_edge(e3)
         self.assertEqual(g.get_graph_direction(), GraphDirection.MIXED)
 
         g2 = Graph(2, [], [e4])

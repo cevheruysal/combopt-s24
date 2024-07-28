@@ -8,6 +8,7 @@ from random import choice
 from enums import MinDistanceAlgorithmsEnum, MinSpanningTreeAlgorithmsEnum
 from graph_utils import delta, minimum_cost_edge_in_delta
 from notation import Vertex, Edge, Graph, Tree
+from util_structs import UnionFind
 
 
 logging.basicConfig(
@@ -196,18 +197,59 @@ class MinSpanningTreeAlgorithms:
         T = Tree(Id="MST_Prims", V=[v_0], E=[])
 
         while not T.vertices.issuperset(self.graph.vertices):
-            delta_edges = delta(T.vertices, self)
-            min_cost_edge = minimum_cost_edge_in_delta(delta)
-            T.init_edge(min_cost_edge)
+            edge_list, from_vertices, to_vertices = self.graph.edges, T.vertices, self.graph.vertices
+            delta_edges = delta(edge_list, from_vertices, to_vertices)
+            min_cost_edge = minimum_cost_edge_in_delta(delta_edges)
+            if min_cost_edge is None: break
+            T.add_edge(min_cost_edge)
         
+        if not T.vertices.issuperset(self.graph.vertices):
+            logger.warning("Tree doesn't span the entirety of the Graph!!")
+            
         return T
 
 
     def kruskals_min_spanning_tree_algorithm(self):
         T = Tree(Id="MST_Kruskals", V=[], E=[])
+        uf = UnionFind(self.graph.vertices.keys())
+        edge_heap = [(e.weight, e.copy()) for e in self.graph.edges.values()]
+        heapq.heapify(edge_heap)
+
+        while len(edge_heap) > 0:
+            _, e = heapq.heappop(edge_heap)
+            v1, v2 = e.end_vertex_ids
+            
+            if uf.find(v1) != uf.find(v2):
+                T.add_edge(e)
+
+        if not T.vertices.issuperset(self.graph.vertices):
+            logger.warning("Tree doesn't span the entirety of the Graph!!")
+            
+        return T
+
+    def bernard_chazelle__min_spanning_tree_algorithm(self):
         pass
 
 
 class NetworkFlowAlgorithms:
     def __init__(self, G: Graph):
         self.graph = G
+
+    def run(self) -> Graph:
+        pass
+
+class MaxFlowAlgorithms(NetworkFlowAlgorithms):
+    def __init__(self, G: Graph):
+        super().__init__(G)
+
+    def run(self) -> Graph:
+        pass
+
+    def ford_fulkerson_max_flow_algorithm(self):
+        pass
+
+    def edmonds_karp_max_flow_algorithm(self):
+        pass
+
+    def dinics_max_flow_algorithm(self):
+        pass

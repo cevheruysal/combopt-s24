@@ -43,23 +43,29 @@ def generate_random_directed_connected_graph(Id, num_vertices:int, num_edges:int
 
     return Graph(Id, V, E)
 
-def delta(V_prime:Dict[int,Vertex], G:Graph) -> Dict[str, Set[Edge]]:
+def delta(Edges:List[Edge], V_from:Dict[int,Vertex], V_to:Dict[int,Vertex]) -> Dict[str, Set[Edge]]:
     delta_edges = {"in":set(), "out":set(), "un-bi":set()}
-    
-    for e in G.edges.values():
+    V_from_set, V_to_set = set(V_from.keys()), set(V_to.keys())
+    V_from_diff, V_to_diff = V_from_set.difference(V_to_set), V_to_set.difference(V_from_set)
+
+    for e in Edges:
         (v1, v2) = e.end_vertex_ids
-        v1_contained = v1 in V_prime.keys()
-        v2_contained = v2 in V_prime.keys()
+        v1_contained_from = v1 in V_from_diff
+        v2_contained_from = v2 in V_from_diff
+
+        v1_contained_to = v1 in V_to_diff
+        v2_contained_to = v2 in V_to_diff
         
-        if v1_contained:
-            if v2_contained: continue
-            elif e.direction is EdgeDirection.DIRECTED:
-                delta_edges["out"].add(e.copy())
-            else: delta_edges["un-bi"].add(e.copy())
-        elif v2_contained:
-            if e.direction is EdgeDirection.DIRECTED:
-                delta_edges["in"].add(e.copy())
-            else: delta_edges["un-bi"].add(e.copy())
+        if v1_contained_from and not v2_contained_from:
+            if v2_contained_to: 
+                if e.direction is EdgeDirection.DIRECTED:
+                    delta_edges["out"].add(e.copy())
+                else: delta_edges["un-bi"].add(e.copy())
+        if not v1_contained_from and v2_contained_from:
+            if v1_contained_to: 
+                if e.direction is EdgeDirection.DIRECTED:
+                    delta_edges["in"].add(e.copy())
+                else: delta_edges["un-bi"].add(e.copy())
 
     return delta_edges
 

@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Set, Tuple, Union
 
 from enums import EdgeDirection, GraphDirection
 from config import ROUND_TO
+from util_structs import UnionFind
 
 
 logging.basicConfig(
@@ -26,7 +27,7 @@ class Vertex:
         return hash(self.id, self.roots, self.roots)
     
     def __eq__(self, other):
-        if isinstance(other, Vertex):
+        if isinstance(other, type(self)):
             return (self.id == other.id and 
                     self.roots == other.roots and 
                     self.leafs == other.leafs)
@@ -43,10 +44,10 @@ class Vertex:
 
 class Edge:
     def __init__(self, Id: int, V1: int, V2: int, W: float, D: EdgeDirection = EdgeDirection.DIRECTED):
+        self.id = Id
         self.end_vertex_ids = (V1, V2)
         self.weight = W
         self.direction = D
-        self.id = Id
     
     def sort_key(self, C) -> int:
         return self.weight * C**2 + self.end_vertex_ids[0] * C + self.end_vertex_ids[1]
@@ -60,7 +61,7 @@ class Edge:
         return hash(self)
     
     def __eq__(self, other):
-        if isinstance(other, Edge):
+        if isinstance(other, type(self)):
             return (self.id == other.id and 
                     self.end_vertex_ids == other.end_vertex_ids and 
                     self.weight == other.weight and 
@@ -73,6 +74,12 @@ class Edge:
         sign = "+" if W > 0 else ""
         d1, d2 = "<" if D.value == 2 else "-", "-" if D.value == 0 else ">" 
         return f"E{Id}:= V{V1} {d1}---W:{sign}{W}---{d2} V{V2}\n"
+    
+
+class Arc(Edge):
+    def __init__(self, Id: int, V1: int, V2: int, C:float, W: float = 0):
+        super().__init__(Id, V1, V2, W)
+        self.capacity = C
 
 
 class Graph:
@@ -80,7 +87,7 @@ class Graph:
         self.id: int = Id 
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Edge] = {}
-        self.connected_components: Set[frozenset] = set()
+        self.connected_components: UnionFind = None
         self.has_negative_weight: Optional[bool] = None
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
@@ -92,9 +99,9 @@ class Graph:
     def init_vertices(self, V:List[Vertex]) -> None:
         for v in sorted(V, key=lambda x: x.id):
             self.vertices[v.id] = v
-            self.connected_components.add(frozenset([v.id]))
+        self.connected_components = UnionFind(self.vertices.keys())
     
-    def init_edge(self, e:Edge):
+    def add_edge(self, e:Edge):
         try:
             v1, v2 = e.end_vertex_ids
 
@@ -103,8 +110,9 @@ class Graph:
                     logger.error(f"Vertex not found: {v}")
                     self.vertices[v] = Vertex(v)
                     logger.warning(f"New vertex created with id: {v}")
-                    self.connected_components.add(frozenset([v]))
+                    self.connected_components.add(v)
 
+            self.connected_components.union(v1, v2)
             self.vertices[v1].leafs.add(v2)
             self.vertices[v2].roots.add(v1)
             
@@ -121,7 +129,7 @@ class Graph:
         constant = max(self.vertices.keys(), default=0)
         E.sort(key=lambda e: e.sort_key(constant))
         for e in E: 
-            self.init_edge(e)
+            self.add_edge(e)
         
     def get_graph_direction(self) -> GraphDirection:
         directions = {edge.direction for edge in self.edges.values()}
@@ -163,16 +171,8 @@ class Graph:
         return False
     
     def get_connected_components(self):
-        for v1, v2 in self.edges.keys():
-            c1 = next(comp for comp in self.connected_components if v1 in comp)
-            c2 = next(comp for comp in self.connected_components if v2 in comp)
-
-            # If c1 and c2 are distinct components, include the weighted_edge in our solution, and merge the two components
-            if c1 != c2:
-                self.connected_components.remove(c1)
-                self.connected_components.remove(c2)
-                self.connected_components.add(c1.union(c2))
-        return len(self.connected_components)
+        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
+        return len(unique_components)
 
     def update_meta(self):
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
@@ -216,3 +216,9 @@ class Tree(Forest):
         super().__init__(Id, V, E)
         if not self.connected:
             raise ValueError("A tree must be connected")
+
+
+class Network(Graph):
+    def __init__(self, Id, s, t, u):
+        # get rid of antiparallel edges when initializing
+        pass

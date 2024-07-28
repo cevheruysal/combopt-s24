@@ -25,3 +25,9 @@ class MinSpanningTreeAlgorithmsEnum(Enum):
     AUTOMATIC = 0
     PRIMS = 1
     KRUSKALS = 2
+
+class MaxFlowAlgorithms(Enum):
+    FORD_FULKERSON = 0
+    EDMONDS_KARP = 1
+    DINICS = 2
+
