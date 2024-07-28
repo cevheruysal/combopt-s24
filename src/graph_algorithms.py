@@ -218,7 +218,7 @@ class MinSpanningTreeAlgorithms:
         while len(edge_heap) > 0:
             _, e = heapq.heappop(edge_heap)
             v1, v2 = e.end_vertex_ids
-            
+
             if uf.find(v1) != uf.find(v2):
                 T.add_edge(e)
 
@@ -226,9 +226,6 @@ class MinSpanningTreeAlgorithms:
             logger.warning("Tree doesn't span the entirety of the Graph!!")
             
         return T
-
-    def bernard_chazelle__min_spanning_tree_algorithm(self):
-        pass
 
 
 class NetworkFlowAlgorithms:
