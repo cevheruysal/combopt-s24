@@ -5,9 +5,10 @@ from unittest.mock import patch, MagicMock
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from graph_algorithms import UtilAlgorithms, MinDistanceAlgorithms
+from graph_algorithms import MaxFlowAlgorithms, MinSpanningTreeAlgorithms, UtilAlgorithms, MinDistanceAlgorithms
 from enums import MinDistanceAlgorithmsEnum, EdgeDirection
 from notation import Vertex, Edge, Graph
+
 
 class TestUtilAlgorithms(unittest.TestCase):
 
@@ -28,6 +29,7 @@ class TestUtilAlgorithms(unittest.TestCase):
     def test_topological_sort(self):
         order = UtilAlgorithms.topological_sort(self.g)
         self.assertEqual(order, [1, 2, 3, 4, 5])
+
 
 class TestMinDistanceAlgorithms(unittest.TestCase):
 
@@ -94,6 +96,114 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
         result = self.algorithms.run(1, 4, MinDistanceAlgorithmsEnum.BELLMAN_FORD)
         mock_bellman.assert_called_once()
         self.assertEqual(result, {1: 0, 2: 1, 3: 2, 4: 3})
+
+
+class TestMinSpanningTreeAlgorithms(unittest.TestCase):
+
+    def setUp(self):
+        self.v1 = Vertex(1)
+        self.v2 = Vertex(2)
+        self.v3 = Vertex(3)
+        self.v4 = Vertex(4)
+        self.v5 = Vertex(5)
+        self.e1 = Edge(1, 1, 2, 1, EdgeDirection.UNDIRECTED)
+        self.e2 = Edge(2, 1, 3, 3, EdgeDirection.UNDIRECTED)
+        self.e3 = Edge(3, 2, 3, 1, EdgeDirection.UNDIRECTED)
+        self.e4 = Edge(4, 2, 4, 6, EdgeDirection.UNDIRECTED)
+        self.e5 = Edge(5, 3, 4, 5, EdgeDirection.UNDIRECTED)
+        self.e6 = Edge(6, 3, 5, 2, EdgeDirection.UNDIRECTED)
+        self.e7 = Edge(7, 4, 5, 4, EdgeDirection.UNDIRECTED)
+        self.g = Graph(1, [self.v1, self.v2, self.v3, self.v4, self.v5], [self.e1, self.e2, self.e3, self.e4, self.e5, self.e6, self.e7])
+        self.algorithms = MinSpanningTreeAlgorithms(self.g)
+
+    def test_prims_min_spanning_tree_algorithm(self):
+        mst = self.algorithms.prims_min_spanning_tree_algorithm()
+        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
+        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        self.assertEqual(mst_edges, expected_edges)
+
+    def test_kruskals_min_spanning_tree_algorithm(self):
+        mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
+        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
+        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        self.assertEqual(mst_edges, expected_edges)
+
+    def test_kruskals_min_spanning_tree_algorithm_disconnected(self):
+        v6 = Vertex(6)
+        self.g.vertices.append(v6)
+        mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
+        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
+        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        self.assertEqual(mst_edges, expected_edges)
+        self.assertEqual(len(mst.edges), 4)
+
+    def test_prims_min_spanning_tree_algorithm_single_vertex(self):
+        single_vertex_graph = Graph(2, [self.v1], [])
+        single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
+        mst = single_vertex_algorithms.prims_min_spanning_tree_algorithm()
+        self.assertEqual(len(mst.edges), 0)
+
+    def test_kruskals_min_spanning_tree_algorithm_single_vertex(self):
+        single_vertex_graph = Graph(2, [self.v1], [])
+        single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
+        mst = single_vertex_algorithms.kruskals_min_spanning_tree_algorithm()
+        self.assertEqual(len(mst.edges), 0)
+
+    def test_prims_min_spanning_tree_algorithm_no_edges(self):
+        no_edge_graph = Graph(2, [self.v1, self.v2], [])
+        no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
+        mst = no_edge_algorithms.prims_min_spanning_tree_algorithm()
+        self.assertEqual(len(mst.edges), 0)
+
+    def test_kruskals_min_spanning_tree_algorithm_no_edges(self):
+        no_edge_graph = Graph(2, [self.v1, self.v2], [])
+        no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
+        mst = no_edge_algorithms.kruskals_min_spanning_tree_algorithm()
+        self.assertEqual(len(mst.edges), 0)
+
+
+class TestMaxFlowAlgorithms(unittest.TestCase):
+
+    def setUp(self):
+        self.v1 = Vertex(1)
+        self.v2 = Vertex(2)
+        self.v3 = Vertex(3)
+        self.v4 = Vertex(4)
+        self.e1 = Edge(1, 1, 2, 3, EdgeDirection.DIRECTED)
+        self.e2 = Edge(2, 1, 3, 3, EdgeDirection.DIRECTED)
+        self.e3 = Edge(3, 2, 3, 2, EdgeDirection.DIRECTED)
+        self.e4 = Edge(4, 2, 4, 3, EdgeDirection.DIRECTED)
+        self.e5 = Edge(5, 3, 4, 4, EdgeDirection.DIRECTED)
+        self.g = Graph(1, [self.v1, self.v2, self.v3, self.v4], [self.e1, self.e2, self.e3, self.e4, self.e5])
+        self.algorithms = MaxFlowAlgorithms(self.g)
+
+    def test_ford_fulkerson_max_flow_algorithm(self):
+        max_flow = self.algorithms.ford_fulkerson_max_flow_algorithm()
+        self.assertEqual(max_flow, 6)  # Expected max flow for this graph
+
+    def test_edmonds_karp_max_flow_algorithm(self):
+        max_flow = self.algorithms.edmonds_karp_max_flow_algorithm()
+        self.assertEqual(max_flow, 6)  # Expected max flow for this graph
+
+    def test_dinics_max_flow_algorithm(self):
+        max_flow = self.algorithms.dinics_max_flow_algorithm()
+        self.assertEqual(max_flow, 6)  # Expected max flow for this graph
+
+    def test_ford_fulkerson_with_bottleneck(self):
+        self.e1.capacity = 2  # Create a bottleneck
+        max_flow = self.algorithms.ford_fulkerson_max_flow_algorithm()
+        self.assertEqual(max_flow, 5)  # Expected max flow with bottleneck
+
+    def test_edmonds_karp_with_disconnected_graph(self):
+        self.e4.capacity = 0  # Disconnect part of the graph
+        max_flow = self.algorithms.edmonds_karp_max_flow_algorithm()
+        self.assertEqual(max_flow, 3)  # Expected max flow with disconnection
+
+    def test_dinics_with_high_capacity_edges(self):
+        self.e1.capacity = 10  # High capacity edge
+        self.e2.capacity = 10
+        max_flow = self.algorithms.dinics_max_flow_algorithm()
+        self.assertEqual(max_flow, 10)  # Expected max flow with high capacity edges
 
 
 if __name__ == '__main__':

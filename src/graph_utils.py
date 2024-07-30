@@ -44,12 +44,16 @@ def generate_random_directed_connected_graph(Id, num_vertices:int, num_edges:int
     return Graph(Id, V, E)
 
 def delta(Edges:List[Edge], V_from:Dict[int,Vertex], V_to:Dict[int,Vertex]) -> Dict[str, Set[Edge]]:
+    """
+    notation for the edges that are incident to a given vertices list V_from and V_to 
+    in a comprehensive graph G that presumably contains all edges in the system """
+
     delta_edges = {"in":set(), "out":set(), "un-bi":set()}
     V_from_set, V_to_set = set(V_from.keys()), set(V_to.keys())
     V_from_diff, V_to_diff = V_from_set.difference(V_to_set), V_to_set.difference(V_from_set)
 
     for e in Edges:
-        (v1, v2) = e.end_vertex_ids
+        (v1, v2) = e.incident_vertex_ids
         v1_contained_from = v1 in V_from_diff
         v2_contained_from = v2 in V_from_diff
 

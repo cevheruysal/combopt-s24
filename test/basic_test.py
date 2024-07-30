@@ -45,7 +45,7 @@ class TestEdge(unittest.TestCase):
     def test_edge_creation(self):
         e = Edge(1, 2, 3, 4.5)
         self.assertEqual(e.id, 1)
-        self.assertEqual(e.end_vertex_ids, (2, 3))
+        self.assertEqual(e.incident_vertex_ids, (2, 3))
         self.assertEqual(e.weight, 4.5)
         self.assertEqual(e.direction, EdgeDirection.DIRECTED)
 
@@ -54,7 +54,7 @@ class TestEdge(unittest.TestCase):
         e2 = Edge(2, 2, 3, 1)
         e1_copy = e1.copy()
         self.assertEqual(e1.id, e1_copy.id)
-        self.assertEqual(e1.end_vertex_ids, e1_copy.end_vertex_ids)
+        self.assertEqual(e1.incident_vertex_ids, e1_copy.incident_vertex_ids)
         self.assertEqual(e1.weight, e1_copy.weight)
         self.assertEqual(e1.direction, e1_copy.direction)
         self.assertEqual(e1, e1_copy)
