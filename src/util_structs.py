@@ -7,6 +7,10 @@ class UnionFind:
         self.parent[element] = element
         self.rank[element] = 0
 
+    def add_multi(self, elements):
+        for element in elements:
+            self.add(element)
+
     def find(self, element):
         if self.parent[element] != element:
             self.parent[element] = self.find(self.parent[element])  # Path compression

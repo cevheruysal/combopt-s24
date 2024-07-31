@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class Vertex:
-    def __init__(self, Id: int, RootNeighbors: Optional[Set[int]] = None, LeafNeighbors: Optional[Set[int]] = None):
+    def __init__(self, Id:int, 
+                 RootNeighbors:Optional[Set[int]] = None, 
+                 LeafNeighbors:Optional[Set[int]] = None):
         self.id = Id
         self.roots = RootNeighbors if RootNeighbors is not None else set()
         self.leafs = LeafNeighbors if LeafNeighbors is not None else set()
@@ -43,7 +45,9 @@ class Vertex:
 
 
 class Edge:
-    def __init__(self, Id: int, V1: int, V2: int, W: float, D: EdgeDirection = EdgeDirection.DIRECTED):
+    def __init__(self, Id:int,
+                 V1:int, V2:int, W:float = 0, 
+                 D:EdgeDirection = EdgeDirection.DIRECTED):
         self.id = Id
         self.incident_vertex_ids = (V1, V2)
         self.weight = W
@@ -77,17 +81,45 @@ class Edge:
     
 
 class Arc(Edge):
-    def __init__(self, Id: int, V1: int, V2: int, C:float, W: float = 0):
-        super().__init__(Id, V1, V2, W)
-        self.capacity = C
+    def __init__(self, Id:int, 
+                 V1:int, V2:int, 
+                 U:float = 0, F:float = 0, R:bool = False):
+        super().__init__(Id, V1, V2)
+        self.capacity = U
+        self.flow = F
+        self.residual_arc = R
+
+    def sort_key(self, C) -> int:
+        return self.capacity * C**2 + self.incident_vertex_ids[0] * C + self.incident_vertex_ids[1]
+
+    def copy(self):
+        V1, V2 = self.incident_vertex_ids
+        Id, U, F, R  = self.id, self.capacity, self.flow, self.residual_arc
+        return Arc(Id, V1, V2, U, F, R)
+    
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return (self.id == other.id and 
+                    self.incident_vertex_ids == other.incident_vertex_ids and 
+                    self.flow == other.flow and 
+                    self.capacity == other.capacity and 
+                    self.residual_arc == other.residual_arc)
+        return False
+    
+    def __str__(self):
+        V1, V2 = self.incident_vertex_ids
+        Id, U, F = (self.id, round(float(self.capacity), ROUND_TO), 
+                    round(float(self.flow), ROUND_TO))
+        return f"A{Id}:= V{V1} ----F/U:{F}/{U}---> V{V2}\n"
 
 
 class Graph:
-    def __init__(self, Id:Union[int,str], V:List[Vertex] = [], E:List[Edge] = []):
+    def __init__(self, Id:Union[int,str], 
+                 V:List[Vertex] = [], E:List[Edge] = []):
         self.id: int = Id 
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Edge] = {}
-        self.connected_components: UnionFind = None
+        self.connected_components = UnionFind()
         self.has_negative_weight: Optional[bool] = None
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
@@ -99,35 +131,30 @@ class Graph:
     def init_vertices(self, V:List[Vertex]) -> None:
         for v in sorted(V, key=lambda x: x.id):
             self.vertices[v.id] = v
-        self.connected_components = UnionFind(self.vertices.keys())
+        self.connected_components.add_multi(self.vertices.keys())
     
-    def add_edge(self, e:Edge):
-        try:
-            v1, v2 = e.incident_vertex_ids
+    def add_edge(self, e:Union[Edge, Arc]) -> None:
+        v1, v2 = e.incident_vertex_ids
 
-            for v in [v1, v2]:
-                if v not in self.vertices:
-                    logger.error(f"Vertex not found: {v}")
-                    self.vertices[v] = Vertex(v)
-                    logger.warning(f"New vertex created with id: {v}")
-                    self.connected_components.add(v)
+        for v in [v1, v2]:
+            if v not in self.vertices:
+                logger.warning(f"Vertex not found: {v}")
+                self.vertices[v] = Vertex(v)
+                logger.warning(f"New vertex created with id: {v}")
+                self.connected_components.add(v)
 
-            self.connected_components.union(v1, v2)
-            self.vertices[v1].leafs.add(v2)
-            self.vertices[v2].roots.add(v1)
+        self.connected_components.union(v1, v2)
+        self.vertices[v1].leafs.add(v2)
+        self.vertices[v2].roots.add(v1)
 
-            if e.direction != EdgeDirection.DIRECTED:
-                self.vertices[v1].roots.add(v2)
-                self.vertices[v2].leafs.add(v1)
+        if e.direction != EdgeDirection.DIRECTED:
+            self.vertices[v1].roots.add(v2)
+            self.vertices[v2].leafs.add(v1)
 
-            self.edges[(v1, v2)] = e
+        self.edges[(v1, v2)] = e
 
-        except Exception as ex:
-            logger.error(f"An error occurred while initializing edge: {ex}")
-            raise
-
-    def init_edges(self, E:List[Edge]) -> None:
-        constant = max(self.vertices.keys(), default=0)
+    def init_edges(self, E:Union[List[Edge], List[Arc]]) -> None:
+        constant = len(self.vertices)
         E.sort(key=lambda e: e.sort_key(constant))
         for e in E: 
             self.add_edge(e)
@@ -175,18 +202,19 @@ class Graph:
                     return True
         return False
     
-    def get_connected_components(self):
+    def get_connected_components(self) -> int:
         unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
         return len(unique_components)
 
-    def update_meta(self):
+    def update_meta(self) -> None:
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
         self.direction = self.get_graph_direction()
         self.acyclical = not self.is_cyclic()
         self.connected = self.get_connected_components() <= 1
 
     def copy(self):
-        return Graph(self.id, [v.copy() for v in self.vertices.values()], 
+        return Graph(self.id, 
+                     [v.copy() for v in self.vertices.values()], 
                      [e.copy() for e in self.edges.values()])
     
     def __str__(self):
@@ -208,7 +236,8 @@ class Graph:
 
 
 class Forest(Graph):
-    def __init__(self, Id: int, V: List[Vertex] = [], E: List[Edge] = []):
+    def __init__(self, Id:int, 
+                 V:List[Vertex] = [], E:List[Edge] = []):
         """
         Let 𝐺 = (𝑉, 𝐸) be an undirected graph.
         (i) 𝐺 is called forest if it is cycle-free.
@@ -220,7 +249,8 @@ class Forest(Graph):
 
 
 class Tree(Forest):
-    def __init__(self, Id: int, V: List[Vertex] = [], E: List[Edge] = []):
+    def __init__(self, Id:int, 
+                 V:List[Vertex] = [], E:List[Edge] = []):
         """
         Let 𝐺 = (𝑉, 𝐸) be an undirected graph, then the following are equivalent:
         (i) 𝐺 is a tree.
@@ -235,9 +265,13 @@ class Tree(Forest):
             raise ValueError("A tree must be connected")
 
 
-class Network():
-    def __init__(self, Id, V, A, s, t, u):
+class Network(Graph):
+    def __init__(self, Id:Union[int,str], 
+                 V:List[Vertex], A:List[Arc], 
+                 s:Union[int, str], t:Union[int, str]):
         """
+        !! 𝑢 argument is not used since kinda dumb to write it specifically !!
+        
         A Network is a tuple 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) where 𝐺 = (𝑉, 𝐸) is a digraph, 
         𝑠, 𝑡 ∈ 𝑉 with 𝑠 ≠ 𝑡 are two distinct nodes in 𝐺 (called source and terminal or sink, respectively), 
         and 𝑢∶ 𝐸 → Q≥0 is called arc capacities.
@@ -271,7 +305,71 @@ class Network():
         
         where 𝛾 ∶= min{𝑢_𝑓(𝑒) ∶ 𝑒 ∈ 𝐸(𝑃)} """
 
-        # initiate like a graph 
-        # but its a network deal with antiparallel edges as well in the residual network
-        self.residual_network = Graph()
-        pass
+        self.id: int = Id 
+        self.vertices: Dict[int, Vertex] = {}
+        self.edges: Dict[Tuple[int, int], Arc] = {}
+        self.connected_components = UnionFind()
+        self.has_negative_weight: Optional[bool] = None
+        self.direction: Optional[str] = None
+        self.acyclical: Optional[bool] = None
+        
+        self.init_vertices(V)
+        self.init_arcs(A)
+        self.update_meta()
+
+        if s not in self.vertices.keys() or t not in self.vertices.keys() or s == t:
+            logger.error("Source and sink nodes must be specified for a proper Network")
+            raise ValueError()
+        
+        self.source_node_id = s
+        self.sink_node_id = t
+
+        if not self.check_if_source_and_sink_connected():
+            logger.error("Source and sink nodes must be connected")
+            raise ValueError()
+
+    def init_arcs(self, A:List[Arc]) -> None:
+        incident_vertices_set = {a.incident_vertex_ids for a in A}
+
+        for a in A:
+            v1, v2 = a.incident_vertex_ids
+
+            if a.residual_arc: continue
+            
+            if (v2, v1) in incident_vertices_set:
+                b:Optional[Arc] = \
+                    next((b for b in A if not b.residual_arc and b.incident_vertex_ids == (v2, v1)), 
+                         default=None)
+                if b is None: continue
+                
+                v3 = len(self.vertices); v4 = v3 + 1
+                self.vertices[v3], self.vertices[v4] = Vertex(v3), Vertex(v4)
+
+                self.connected_components.add_multi((v3, v4))
+
+                a1_id = len(A); a2_id, a3_id, a4_id = a1_id+1, a1_id+2, a1_id+3
+                A.remove(a); A.remove(b)
+                A.extend((Arc(a1_id, v1, v3, a.capacity, a.flow), Arc(a2_id, v3, v2, a.capacity, a.flow), 
+                          Arc(a3_id, v2, v4, b.capacity, b.flow), Arc(a4_id, v4, v1, b.capacity, b.flow)))
+                
+                logger.warning("Found antiparallel arcs in the specified arc list constructing workaround")
+                
+        self.init_edges(A)  
+
+    def check_if_source_and_sink_connected(self):
+        return self.connected_components.find(self.source_node_id) == \
+               self.connected_components.find(self.sink_node_id)
+
+    def copy(self):
+        return Network(self.id, 
+                       [v.copy() for v in self.vertices.values()], 
+                       [a.copy() for a in self.edges.values()], 
+                       self.source_node_id, self.sink_node_id)
+    
+    def __str__(self): # TODO
+        graph_info = (f"Metadata of Network{self.id}:\n"
+                      + ("This is a directed " if self.direction else "This is an undirected ")
+                      + ("acyclic graph " if self.acyclical else "graph that possibly includes cycles ")
+                      + "with " + ("some negative " if self.has_negative_weight else "all positive ") + "edge weights\n"
+                      )
+        return graph_info
