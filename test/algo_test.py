@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 
 from graph_algorithms import MaxFlowAlgorithms, MinSpanningTreeAlgorithms, UtilAlgorithms, MinDistanceAlgorithms
 from enums import MinDistanceAlgorithmsEnum, EdgeDirection
-from notation import Vertex, Edge, Graph
+from notation import Arc, Network, Vertex, Edge, Graph
 
 
 class TestUtilAlgorithms(unittest.TestCase):
@@ -169,12 +169,13 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
         self.v2 = Vertex(2)
         self.v3 = Vertex(3)
         self.v4 = Vertex(4)
-        self.e1 = Edge(1, 1, 2, 3, EdgeDirection.DIRECTED)
-        self.e2 = Edge(2, 1, 3, 3, EdgeDirection.DIRECTED)
-        self.e3 = Edge(3, 2, 3, 2, EdgeDirection.DIRECTED)
-        self.e4 = Edge(4, 2, 4, 3, EdgeDirection.DIRECTED)
-        self.e5 = Edge(5, 3, 4, 4, EdgeDirection.DIRECTED)
-        self.g = Graph(1, [self.v1, self.v2, self.v3, self.v4], [self.e1, self.e2, self.e3, self.e4, self.e5])
+        self.e1 = Arc(1, 1, 2, 3)
+        self.e2 = Arc(2, 1, 3, 3)
+        self.e3 = Arc(3, 2, 3, 2)
+        self.e4 = Arc(4, 2, 4, 3)
+        self.e5 = Arc(5, 3, 4, 4)
+        self.g = Network(1, [self.v1, self.v2, self.v3, self.v4], 
+                         [self.e1, self.e2, self.e3, self.e4, self.e5], 1, 4)
         self.algorithms = MaxFlowAlgorithms(self.g)
 
     def test_ford_fulkerson_max_flow_algorithm(self):

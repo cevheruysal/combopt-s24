@@ -330,7 +330,7 @@ class Network(Graph):
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Arc] = {}
         self.connected_components = UnionFind([])
-        self.node_levels: Dict[int, int] = {}
+        self.node_levels: Dict[int, int] = None
 
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
@@ -338,8 +338,6 @@ class Network(Graph):
         
         self.init_vertices(V)
         self.init_arcs(A)
-        self.update_node_levels()
-        self.update_meta()
 
         if s not in self.vertices.keys() or t not in self.vertices.keys() or s == t:
             logger.error("Source and sink nodes must be specified for a proper Network")
@@ -348,6 +346,9 @@ class Network(Graph):
         self.source_node_id = s
         self.sink_node_id = t
         self.flow = f
+        
+        self.update_node_levels()
+        self.update_meta()
 
         if not self.st_connected:
             logger.error("Source and sink nodes must be connected")
@@ -403,6 +404,9 @@ class Network(Graph):
         self.init_edges(residual_arcs)
 
     def update_node_levels(self) -> bool:
+        if self.node_levels is None: 
+            self.node_levels = {v:-1 for v in self.vertices}
+
         self.node_levels[self.source_node_id] = 0
         queue = deque([self.source_node_id])
         

@@ -363,13 +363,12 @@ class MinSpanningTreeAlgorithms:
 class NetworkFlowAlgorithms:
     def __init__(self, N: Network):
         self.network = N
-        self.residual_network = N.copy()
 
     def run(self) -> Graph:
         pass
 
 class MaxFlowAlgorithms(NetworkFlowAlgorithms):
-    def __init__(self, N: Network):
+    def __init__(self, N:Network):
         """
         Input: a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
         Task: compute an 𝑠-𝑡-flow 𝑓 in 𝑁 of maximum value 
