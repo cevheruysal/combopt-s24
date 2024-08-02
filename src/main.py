@@ -2,8 +2,7 @@ import logging
 
 from config import ROUND_TO
 from graph_utils import generate_random_directed_connected_graph
-from graph_algorithms import MinDistanceAlgorithms
-
+from algorithms.min_distance import MinDistanceAlgorithmSolver
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -17,7 +16,8 @@ G = generate_random_directed_connected_graph(0, 10, 30, (0, 10))
 G.disp()
 
 start_vertex_id = 0
-min_dist = MinDistanceAlgorithms(G)
+min_dist = MinDistanceAlgorithmSolver(G)
 distances_from_start_vertex = min_dist.run(start_vertex_id, 99)
-print({key:round(value,ROUND_TO) for key, value in distances_from_start_vertex.items()} 
-      if distances_from_start_vertex is not None else "")
+distances_from_start_vertex = {key: round(distances_from_start_vertex[key], ROUND_TO) for key in distances_from_start_vertex}\
+    if distances_from_start_vertex else {}
+print(distances_from_start_vertex)

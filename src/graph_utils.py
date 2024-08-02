@@ -1,4 +1,4 @@
-import logging 
+import logging
 import random as r
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -82,9 +82,9 @@ def cut(N:Network, C:List[Vertex]) -> Tuple[Set[Arc], int, bool]:
     C_set = {c.id for c in C}
     C_bar = N_vertices_set.difference(C_set)
     
-    delta = delta(N.edges, C_set, C_bar)
+    _delta = delta(N.edges, C_set, C_bar)
 
-    cut_edges = delta["out"]
+    cut_edges = _delta["out"]
     cut_capacity = sum([a.capacity for a in cut_edges])
     s_t_cut = N.source_node_id in C_set and N.sink_node_id in C_bar
     
