@@ -139,7 +139,7 @@ class Graph:
         self.id: int = Id 
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Edge] = {}
-        self.connected_components = UnionFind()
+        self.connected_components = UnionFind([])
         self.has_negative_weight: Optional[bool] = None
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
@@ -329,7 +329,7 @@ class Network(Graph):
         self.id: int = Id 
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Arc] = {}
-        self.connected_components = UnionFind()
+        self.connected_components = UnionFind([])
         self.node_levels: Dict[int, int] = {}
 
         self.direction: Optional[str] = None
