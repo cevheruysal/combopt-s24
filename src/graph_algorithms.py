@@ -1,13 +1,13 @@
+from collections import deque
 import logging
-from typing import Optional, List
-from queue import PriorityQueue
+from typing import Dict, Optional, List, Tuple
 import heapq
 import numpy as np
 from random import choice
 
 from enums import MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum, MinSpanningTreeAlgorithmsEnum
 from graph_utils import delta, minimum_cost_edge_in_delta
-from notation import Vertex, Edge, Graph, Tree
+from notation import Network, Vertex, Edge, Graph, Tree
 from util_structs import UnionFind
 
 
@@ -27,26 +27,56 @@ class UtilAlgorithms:
             return None
         
         topological_order = []
-        no_root_vertices_list = [v.copy() for v in G.vertices.values() if len(v.roots) == 0]
-        all_vertices_dict = {id: v.copy() for id, v in G.vertices.items() if len(v.roots) > 0}
+        in_degree = {v.id:len(v.roots) for v in G.vertices.values()}
+        queue = deque([v_id for v_id, deg in in_degree.items() if deg == 0])
 
-        while no_root_vertices_list:
-            root_vertex = no_root_vertices_list.pop(0)
-            topological_order.append(root_vertex.id)
-            
-            for leaf_id in root_vertex.leafs:
-                leaf_vertex = all_vertices_dict[leaf_id]
-                leaf_vertex.roots.remove(root_vertex.id)
-                
-                if len(leaf_vertex.roots) == 0:
-                    no_root_vertices_list.append(leaf_vertex.copy())
+        while queue:
+            root = queue.popleft()
+            topological_order.append(root)
+
+            for leaf in G.vertices[root].leafs:
+                in_degree[leaf] -= 1
+                if in_degree[leaf] == 0:
+                    queue.append(leaf)
 
         if len(topological_order) == len(G.vertices):
             return topological_order
         
         logger.info("Topological sorting finished, no possible sorting found. The graph may have cycles.")
         return None
+    
+    @staticmethod
+    def find_st_path(N: Network) -> Optional[Tuple[List[Tuple[int, int]], float]]:
+        def construct_path_to_node(parent:Dict[int, int], node:int) -> List[Tuple[int, int]]:
+            path = []
+            while parent[node] != -1:
+                path.insert(0, (parent[node], node))
+                node = parent[node]
+            return path
+    
+        parent_dict = {v: -1 for v in N.vertices.keys()}
+        visited = set()
+        queue = deque([(N.source_node_id, float('inf'))])
+        
+        while queue:
+            current, flow = queue.popleft()
+            if current in visited: continue
+            visited.add(current)
+            
+            for neighbor in N.vertices[current].leafs:
+                arc = N.edges[(current, neighbor)]
 
+                if neighbor not in visited and arc.remaining_capacity() > 0:
+                    new_flow = min(flow, arc.remaining_capacity())
+                    parent_dict[neighbor] = current
+                
+                    if neighbor == N.sink_node_id:
+                        path = construct_path_to_node(parent_dict, N.sink_node_id)
+                        logger.info(f"Found augmenting path with flow {new_flow}")
+                        return path, new_flow
+                
+                    queue.append((neighbor, new_flow))
+        return None, 0
 
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
@@ -99,14 +129,18 @@ class MinDistanceAlgorithms:
 
         distances = {v.id: float('inf') for v in self.graph.vertices.values()}
         distances[start_vertex] = 0
+
         for vertex_id in UtilAlgorithms.topological_sort(self.graph):
             if distances[vertex_id] == float('inf'):
                 continue
+        
             for neighbor in self.graph.vertices[vertex_id].leafs:
                 edge = self.graph.edges[(vertex_id, neighbor)]
                 new_distance = distances[vertex_id] + edge.weight
+        
                 if new_distance < distances[neighbor]:
                     distances[neighbor] = new_distance
+        
         logger.info("Found solution using Topological Sort")
         return distances
 
@@ -117,20 +151,22 @@ class MinDistanceAlgorithms:
 
         distances = {v.id: float('inf') for v in self.graph.vertices.values()}
         distances[start_vertex] = 0
-        pq = PriorityQueue()
-        pq.put((0, start_vertex))
+        heap = [(0, start_vertex)]
+        heapq.heapify(heap)
         
-        while not pq.empty():
-            current_distance, current_vertex = pq.get()
+        while heap:
+            current_distance, current_vertex = heapq.heappop(heap)
             if current_distance > distances[current_vertex]:
                 continue
 
             for neighbor in self.graph.vertices[current_vertex].leafs:
                 edge = self.graph.edges[(current_vertex, neighbor)]
                 distance = current_distance + edge.weight
+                
                 if distance < distances[neighbor]:
                     distances[neighbor] = distance
-                    pq.put((distance, neighbor))
+                    heapq.heappush(heap, (distance, neighbor))
+
         logger.info("Found solution using Dijkstra's")
         return distances
 
@@ -142,18 +178,20 @@ class MinDistanceAlgorithms:
         
         distances = {v.id: float('inf') for v in self.graph.vertices.values()}
         distances[start_vertex] = 0
+
         for _ in range(len(self.graph.vertices) - 1):
             for edge in self.graph.edges.values():
                 u, v = edge.incident_vertex_ids
-                if distances[u] + edge.weight < distances[v]:
-                    distances[v] = distances[u] + edge.weight
-        
+                distances[v] = min(distances[u] + edge.weight, 
+                                   distances[v])
+                
         # Check for negative weight cycles
         for edge in self.graph.edges.values():
             u, v = edge.incident_vertex_ids
             if distances[u] + edge.weight < distances[v]:
-                raise logger.info("Graph contains a negative weight cycle")
+                logger.info("Graph contains a negative weight cycle")
                 return None
+            
         logger.info("Found solution using Bellman Ford's")
         return distances
     
@@ -254,14 +292,15 @@ class MinSpanningTreeAlgorithms:
         v_0 = choice(self.graph.vertices)
         T = Tree(Id="MST_Prims", V=[v_0], E=[])
 
-        while not T.vertices.issuperset(self.graph.vertices):
-            edge_list, from_vertices, to_vertices = self.graph.edges, T.vertices, self.graph.vertices
+        while len(T.vertices) < len(self.graph.vertices):
+            edge_list, from_vertices, to_vertices = (self.graph.edges, T.vertices.keys(), 
+                                                     [v for v in self.graph.vertices.keys() if v not in T.vertices.keys()])
             delta_edges = delta(edge_list, from_vertices, to_vertices)
             min_cost_edge = minimum_cost_edge_in_delta(delta_edges)
             if min_cost_edge is None: break
             T.add_edge(min_cost_edge)
         
-        if not T.vertices.issuperset(self.graph.vertices):
+        if len(T.vertices) < len(self.graph.vertices):
             logger.warning("Tree doesn't span the entirety of the Graph!!")
             
         return T
@@ -293,21 +332,22 @@ class MinSpanningTreeAlgorithms:
             if uf.find(v1) != uf.find(v2):
                 T.add_edge(e)
 
-        if not T.vertices.issuperset(self.graph.vertices):
+        if len(T.vertices) < len(self.graph.vertices):
             logger.warning("Tree doesn't span the entirety of the Graph!!")
             
         return T
 
 
 class NetworkFlowAlgorithms:
-    def __init__(self, G: Graph):
-        self.graph = G
+    def __init__(self, N: Network):
+        self.network = N
+        self.residual_network = N.copy()
 
     def run(self) -> Graph:
         pass
 
 class MaxFlowAlgorithms(NetworkFlowAlgorithms):
-    def __init__(self, G: Graph):
+    def __init__(self, N: Network):
         """
         Input: a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
         Task: compute an 𝑠-𝑡-flow 𝑓 in 𝑁 of maximum value 
@@ -317,25 +357,23 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         Let 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) be a network, then the value of a maximum 𝑠-𝑡-flow 
         is equal to the capacity of a minimum (𝑠, 𝑡)-cut in 𝑁 """
 
-        super().__init__(G)
-        self.residual_graph = None
+        super().__init__(N)
 
-    def run(self, source_vertex_id:Optional[int]=0, sink_vertex_id:Optional[int]=None, 
-            use_algorithm:MaxFlowAlgorithmsEnum=MaxFlowAlgorithmsEnum.EDMONDS_KARP) -> int:
+    def run(self, use_algorithm:MaxFlowAlgorithmsEnum=MaxFlowAlgorithmsEnum.EDMONDS_KARP) -> int:
         result = None
 
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find max flow / min cut")
         
             match use_algorithm.value:
-                case 1: result = self.ford_fulkerson_max_flow_algorithm(source_vertex_id, sink_vertex_id)
-                case 2: result = self.edmonds_karp_max_flow_algorithm(source_vertex_id, sink_vertex_id)
-                case 3: result = self.dinics_max_flow_algorithm(source_vertex_id, sink_vertex_id)
+                case 1: result = self.ford_fulkerson_max_flow_algorithm()
+                case 2: result = self.edmonds_karp_max_flow_algorithm()
+                case 3: result = self.dinics_max_flow_algorithm()
                 case _: logger.error("Algorithm doesn't exist returning no solution") 
         
         return result
 
-    def ford_fulkerson_max_flow_algorithm(self, source:Optional[int]=0, sink:Optional[int]=None) -> int:
+    def ford_fulkerson_max_flow_algorithm(self) -> float:
         """
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) with positive arc capacities 𝑢 ∶ 𝐸(𝐺) → Q>0
         output: an 𝑠-𝑡-flow of maximum value in 𝑁
@@ -347,21 +385,17 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
             5 augment 𝑓 along 𝑃 by 𝛾
         6 return 𝑓 """
 
-        if sink is None: sink = len(self.graph.vertices) - 1 
-        max_flow = 0
-        self.residual_graph = self._create_residual_graph()
+        self.network.initialize_flow()
 
         while True:
-            path, flow = self._bfs(source, sink)
-            if not path:
-                break
-            max_flow += flow
-            self._update_residual_graph(path, flow)
+            path, flow = UtilAlgorithms.find_st_path(self.network)
+            if path is None or flow == 0: break
+            self.network.augment_along(path, flow)
 
-        logger.info(f"Found maximum flow using Ford-Fulkerson: {max_flow}")
-        return max_flow
+        logger.info(f"Found maximum flow using Ford-Fulkerson: {self.network.flow}")
+        return self.network.flow
 
-    def edmonds_karp_max_flow_algorithm(self, source:Optional[int]=0, sink:Optional[int]=None) -> int:
+    def edmonds_karp_max_flow_algorithm(self) -> float:
         """
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) with positive arc capacities 𝑢 ∶ 𝐸(𝐺) → Q>0
         output: an 𝑠-𝑡-flow of maximum value in 𝑁
@@ -376,29 +410,23 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         Regardless of the edge capacities, the Edmonds-Karp algorithm (Algorithm 5) stops after at most 𝑚*𝑛/2 augmentations. 
         It can be implemented such that it computes a maximum network flow in time 𝒪(𝑚^2*𝑛) """
 
-        if sink is None: sink = len(self.graph.vertices) - 1 
-        max_flow = 0
-        self.residual_graph = self._create_residual_graph()
+        self.network.initialize_flow()
 
         while True:
-            path, flow = self._bfs(source, sink)
-            if not path:
-                break
-            max_flow += flow
-            self._update_residual_graph(path, flow)
+            path, flow = UtilAlgorithms.find_st_path(self.network)
+            if path is None: break
+            self.network.augment_along(path, flow)
 
-        logger.info(f"Found maximum flow using Edmonds-Karp: {max_flow}")
-        return max_flow
+        logger.info(f"Found maximum flow using Edmonds-Karp: {self.network.flow}")
+        return self.network.flow
 
-    def dinics_max_flow_algorithm(self, source:Optional[int]=0, sink:Optional[int]=None) -> int:
-        if sink is None: sink = len(self.graph.vertices) - 1 
+    def dinics_max_flow_algorithm(self) -> int:
         max_flow = 0
-        self.residual_graph = self._create_residual_graph()
 
-        while self._bfs_level_graph(source, sink):
-            start = [0] * len(self.graph.vertices)
+        while self._bfs_level_graph():
+            start = [0] * len(self.network.vertices)
             while True:
-                flow = self._dfs_blocking_flow(source, sink, float('inf'), start)
+                flow = self._dfs_blocking_flow(float('inf'), start)
                 if flow == 0:
                     break
                 max_flow += flow
@@ -406,60 +434,16 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         logger.info(f"Found maximum flow using Dinic's algorithm: {max_flow}")
         return max_flow
 
-    def _create_residual_graph(self):
-        residual_graph = {}
-        for u in self.graph.vertices:
-            residual_graph[u] = {}
-            for v in self.graph.vertices:
-                residual_graph[u][v] = 0
-        for edge in self.graph.edges.values():
-            u, v = edge.incident_vertex_ids
-            residual_graph[u][v] = edge.weight
-        return residual_graph
-
-    def _bfs(self, source, sink):
-        parent = {v: -1 for v in self.graph.vertices}
-        visited = set()
-        queue = [(source, float('inf'))]
-        
-        while queue:
-            current, flow = queue.pop(0)
-            if current in visited:
-                continue
-            visited.add(current)
-            
-            for neighbor in self.graph.vertices[current].leafs:
-                if neighbor not in visited and self.residual_graph[current][neighbor] > 0:
-                    new_flow = min(flow, self.residual_graph[current][neighbor])
-                    parent[neighbor] = current
-                    if neighbor == sink:
-                        path = self._construct_path(parent, sink)
-                        return path, new_flow
-                    queue.append((neighbor, new_flow))
-        return None, 0
-
-    def _construct_path(self, parent, sink):
-        path = []
-        current = sink
-        while parent[current] != -1:
-            path.insert(0, (parent[current], current))
-            current = parent[current]
-        return path
-
-    def _update_residual_graph(self, path, flow):
-        for u, v in path:
-            self.residual_graph[u][v] -= flow
-            self.residual_graph[v][u] += flow
-
     def _bfs_level_graph(self, source, sink):
-        level = {v: -1 for v in self.graph.vertices}
+        level = {v: -1 for v in self.network.vertices}
         level[source] = 0
         queue = [source]
         
         while queue:
             u = queue.pop(0)
-            for v in self.graph.vertices[u].leafs:
-                if level[v] < 0 and self.residual_graph[u][v] > 0:
+            for v in self.network.vertices[u].leafs:
+                arc = self.network.edges[(u, v)]
+                if level[v] < 0 and arc.remaining_capacity > 0:
                     level[v] = level[u] + 1
                     queue.append(v)
         
@@ -469,8 +453,8 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
     def _dfs_blocking_flow(self, u, sink, flow, start):
         if u == sink:
             return flow
-        while start[u] < len(self.graph.vertices[u].leafs):
-            v = self.graph.vertices[u].leafs[start[u]]
+        while start[u] < len(self.network.vertices[u].leafs):
+            v = self.network.vertices[u].leafs[start[u]]
             if self.level[v] == self.level[u] + 1 and self.residual_graph[u][v] > 0:
                 curr_flow = min(flow, self.residual_graph[u][v])
                 temp_flow = self._dfs_blocking_flow(v, sink, curr_flow, start)

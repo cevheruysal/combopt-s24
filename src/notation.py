@@ -90,7 +90,24 @@ class Arc(Edge):
         self.residual_arc = R
 
     def sort_key(self, C) -> int:
-        return self.capacity * C**2 + self.incident_vertex_ids[0] * C + self.incident_vertex_ids[1]
+        return self.capacity * C**2 + \
+               self.incident_vertex_ids[0] * C + \
+               self.incident_vertex_ids[1]
+    
+    def set_flow(self, value) -> None:
+        if self.residual_arc:
+            self.capacity == value
+        else:
+            self.flow == value
+
+    def alter_flow(self, delta) -> None:
+        if self.residual_arc:
+            self.capacity += delta
+        else:
+            self.flow += delta
+    
+    def remaining_capacity(self) -> float:
+        return self.capacity - self.flow
 
     def copy(self):
         V1, V2 = self.incident_vertex_ids
@@ -143,9 +160,10 @@ class Graph:
                 logger.warning(f"New vertex created with id: {v}")
                 self.connected_components.add(v)
 
-        self.connected_components.union(v1, v2)
-        self.vertices[v1].leafs.add(v2)
-        self.vertices[v2].roots.add(v1)
+        if not (isinstance(e, Arc) and e.residual_arc):
+            self.connected_components.union(v1, v2)
+            self.vertices[v1].leafs.add(v2)
+            self.vertices[v2].roots.add(v1)
 
         if e.direction != EdgeDirection.DIRECTED:
             self.vertices[v1].roots.add(v2)
@@ -268,7 +286,7 @@ class Tree(Forest):
 class Network(Graph):
     def __init__(self, Id:Union[int,str], 
                  V:List[Vertex], A:List[Arc], 
-                 s:Union[int, str], t:Union[int, str]):
+                 s:Union[int, str], t:Union[int, str], f:int = 0):
         """
         !! 𝑢 argument is not used since kinda dumb to write it specifically !!
         
@@ -309,7 +327,7 @@ class Network(Graph):
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Arc] = {}
         self.connected_components = UnionFind()
-        self.has_negative_weight: Optional[bool] = None
+        self.has_negative_capacity: Optional[bool] = None
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
         
@@ -323,48 +341,87 @@ class Network(Graph):
         
         self.source_node_id = s
         self.sink_node_id = t
+        self.flow = f
 
         if not self.check_if_source_and_sink_connected():
             logger.error("Source and sink nodes must be connected")
             raise ValueError()
-
-    def init_arcs(self, A:List[Arc]) -> None:
+        
+    def refactor_antiparallel_arcs(self, A:List[Arc]) -> List[Arc]:
         incident_vertices_set = {a.incident_vertex_ids for a in A}
+        residual_filtered_A = [a for a in A if not a.residual_arc]
+        new_arcs = []
 
-        for a in A:
+        for a in residual_filtered_A:
             v1, v2 = a.incident_vertex_ids
-
-            if a.residual_arc: continue
             
             if (v2, v1) in incident_vertices_set:
-                b:Optional[Arc] = \
-                    next((b for b in A if not b.residual_arc and b.incident_vertex_ids == (v2, v1)), 
-                         default=None)
+                b: Optional[Arc] = next((b for b in A if b.incident_vertex_ids == (v2, v1)), None)
                 if b is None: continue
                 
-                v3 = len(self.vertices); v4 = v3 + 1
+                v3 = len(self.vertices)
+                v4 = v3 + 1
                 self.vertices[v3], self.vertices[v4] = Vertex(v3), Vertex(v4)
-
                 self.connected_components.add_multi((v3, v4))
-
-                a1_id = len(A); a2_id, a3_id, a4_id = a1_id+1, a1_id+2, a1_id+3
-                A.remove(a); A.remove(b)
-                A.extend((Arc(a1_id, v1, v3, a.capacity, a.flow), Arc(a2_id, v3, v2, a.capacity, a.flow), 
-                          Arc(a3_id, v2, v4, b.capacity, b.flow), Arc(a4_id, v4, v1, b.capacity, b.flow)))
                 
-                logger.warning("Found antiparallel arcs in the specified arc list constructing workaround")
+                a1_id = len(A) + len(new_arcs)
+                a2_id, a3_id, a4_id = a1_id + 1, a1_id + 2, a1_id + 3
+                new_arcs.extend([
+                    Arc(a1_id, v1, v3, a.capacity, a.flow),
+                    Arc(a2_id, v3, v2, a.capacity, a.flow),
+                    Arc(a3_id, v2, v4, b.capacity, b.flow),
+                    Arc(a4_id, v4, v1, b.capacity, b.flow),
+                ])
                 
-        self.init_edges(A)  
+                logger.warning(f"Found antiparallel arcs between {v1}-{v2} and {v2}-{v1}, constructing workaround.")
+                
+                A.remove(a)
+                A.remove(b)
+        
+        residual_filtered_A.extend(new_arcs)
+        return residual_filtered_A
+    
+    def create_residual_arcs(self, A:List[Arc]) -> List[Arc]:
+        residual_arcs = []
+        for a in A:
+            v1, v2 = a.incident_vertex_ids
+            a.id, a.capacity, a.flow, a.residual_arc
+            residual_arcs.append(Arc(a.id + len(A), v2, v1, R=True))
+        return residual_arcs
 
-    def check_if_source_and_sink_connected(self):
+    def init_arcs(self, A:List[Arc]) -> None:
+        A_new = self.refactor_antiparallel_arcs(A)
+        residual_arcs = self.create_residual_arcs(A_new)
+    
+        self.init_edges(A_new)
+        self.init_edges(residual_arcs)
+
+    def update_meta(self) -> None:
+        self.has_negative_capacity = any(a.capacity < 0 for a in self.edges.values())
+        self.direction = self.get_graph_direction()
+        self.acyclical = not self.is_cyclic()
+        self.connected = self.get_connected_components() <= 1
+
+    def check_if_source_and_sink_connected(self) -> bool:
         return self.connected_components.find(self.source_node_id) == \
                self.connected_components.find(self.sink_node_id)
+    
+    def initialize_flow(self) -> None:
+        self.flow = 0
+        for arc in self.edges.values(): 
+            arc.set_flow(0)
+
+    def augment_along(self, P:List[Tuple[int, int]], f:float):
+        self.flow += f
+        for u, v in P:
+            self.edges[(u, v)].alter_flow(-f)
+            self.edges[(v, u)].alter_flow(+f)
 
     def copy(self):
         return Network(self.id, 
                        [v.copy() for v in self.vertices.values()], 
                        [a.copy() for a in self.edges.values()], 
-                       self.source_node_id, self.sink_node_id)
+                       self.source_node_id, self.sink_node_id, self.flow)
     
     def __str__(self): # TODO
         graph_info = (f"Metadata of Network{self.id}:\n"
