@@ -46,22 +46,22 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
         self.algorithms = MinDistanceAlgorithms(self.g)
 
     def test_topological_sort_min_dist_algorithm(self):
-        result = self.algorithms.topological_sort_min_dist_algorithm(1)
+        result = self.algorithms.topological_sort(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_dijkstras_min_dist_algorithm(self):
-        result = self.algorithms.dijkstras_min_dist_algorithm(1)
+        result = self.algorithms.dijkstra(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_bellman_fords_min_dist_algorithm(self):
-        result = self.algorithms.bellman_fords_min_dist_algorithm(1)
+        result = self.algorithms.bellman_fords(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_floyd_warshall_min_dist_algorithm(self):
-        result = self.algorithms.floyd_warshall_min_dist_algorithm(1)
+        result = self.algorithms.floyd_warshall(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
