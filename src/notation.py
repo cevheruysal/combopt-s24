@@ -151,7 +151,7 @@ class Graph:
     def init_vertices(self, V:List[Vertex]) -> None:
         for v in sorted(V, key=lambda x: x.id):
             self.vertices[v.id] = v
-        self.connected_components.add_multi(self.vertices.keys())
+            self.connected_components.add(v.id)
     
     def add_edge(self, e:Union[Edge, Arc]) -> None:
         v1, v2 = e.incident_vertex_ids
