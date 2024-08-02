@@ -98,15 +98,34 @@ class Arc(Edge):
                self.incident_vertex_ids[1]
     
     def set_flow(self, value:float) -> None:
+        if value < 0:
+            logger.error("Flow value cannot be nagative")
+            raise ValueError()
+        
         if self.residual_arc:
-            self.capacity == value
+            self.capacity = value
         else:
-            self.flow == value
+            if value > self.capacity: 
+                logger.error("Flow value cannot surpass arc capacity")
+                raise ValueError()
+            self.flow = value
 
     def alter_flow(self, delta:float) -> None:
         if self.residual_arc:
+            if self.capacity - delta < 0:
+                logger.error("Negative residual arc is not possible")
+                raise ValueError()
+            
             self.capacity -= delta
+        
         else:
+            if self.flow + delta < 0: 
+                logger.error("Negative flow is not possible on arc")
+                raise ValueError()
+            elif self.flow + delta < 0:
+                logger.error("Flow cannot surpass capacity")
+                raise ValueError()
+        
             self.flow += delta
     
     def remaining_capacity(self) -> float:
@@ -127,6 +146,8 @@ class Arc(Edge):
         return False
     
     def __str__(self):
+        if self.residual_arc and self.capacity <= 0:
+            return ""
         V1, V2 = self.incident_vertex_ids
         Id, U, F = (self.id, round(float(self.capacity), ROUND_TO), 
                     round(float(self.flow), ROUND_TO))

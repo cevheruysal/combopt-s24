@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from notation import Vertex, Edge, Graph, Forest, Tree  # Adjust the import path as necessary
+from notation import Arc, Network, Vertex, Edge, Graph, Forest, Tree  # Adjust the import path as necessary
 from enums import EdgeDirection, GraphDirection
 
 
@@ -74,6 +74,65 @@ class TestEdge(unittest.TestCase):
         self.assertEqual(str(e3), expected_output_3)
 
 
+class TestArc(unittest.TestCase):
+
+    def test_arc_initialization(self):
+        a = Arc(1, 1, 2, 10.0, 5.0)
+        self.assertEqual(a.id, 1)
+        self.assertEqual(a.incident_vertex_ids, (1, 2))
+        self.assertEqual(a.capacity, 10.0)
+        self.assertEqual(a.flow, 5.0)
+        self.assertEqual(a.residual_arc, False)
+    
+    def test_arc_remaining_capacity(self):
+        a = Arc(1, 1, 2, 10.0, 5.0)
+        self.assertEqual(a.remaining_capacity(), 5.0)
+
+        a_res = Arc(1, 2, 1, 4.0, 0.0, True)
+        self.assertEqual(a_res.remaining_capacity(), 4.0)
+    
+    def test_arc_flow_methods(self):
+        a_id, a_res_id, v1, v2, a_cap, a_flow = 0, 1, 1, 2, 10.0, 5.0
+        a     = Arc(a_id, v1, v2, a_cap, a_flow)
+        a_res = Arc(a_res_id, v2, v1, a_flow, 0.0, True)
+
+        f = 4.5
+        dF = -2.3 # any float less than a.remaining_capacity()
+        
+        a.set_flow(f)
+        a_res.set_flow(f)
+
+        self.assertEqual(a.flow, f)
+        self.assertEqual(a.capacity, a_cap)
+
+        self.assertEqual(a_res.flow, 0.0)
+        self.assertEqual(a_res.capacity, f)
+
+        a.alter_flow(dF)
+        a_res.alter_flow(-dF)
+
+        self.assertEqual(a.flow, a_res.capacity)
+    
+    def test_arc_copy(self):
+        a1 = Arc(1, 1, 2, 10.0, 5.0)
+        a2 = a1.copy()
+        self.assertEqual(a1, a2)
+        a2.flow = 7.0
+        self.assertNotEqual(a1, a2)
+    
+    def test_arc_string_representation(self):
+        a = Arc(1, 1, 2, 10.0, 5.0)
+        a_res1 = Arc(2, 2, 1, 5.0, 0.0, True)
+        a_res2 = Arc(3, 2, 1, 0.0, 0.0, True)
+
+        expected_output_0 = "A1:= V1 ----F/U:5.0/10.0---> V2\n"
+        expected_output_1 = "A2:= V2 ----F/U:0.0/5.0---> V1\n"
+
+        self.assertEqual(str(a), expected_output_0)
+        self.assertEqual(str(a_res1), expected_output_1)
+        self.assertEqual(str(a_res2), "")
+
+
 class TestGraph(unittest.TestCase):
 
     def test_graph_creation(self):
@@ -86,18 +145,7 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(len(g.vertices), 2)
         self.assertEqual(len(g.edges), 2)
 
-    def test_graph_init_edge(self):
-        v1 = Vertex(1)
-        v2 = Vertex(2)
-        e = Edge(1, 1, 2, 4.5)
-        g = Graph(1, [v1, v2], [])
-        g.add_edge(e)
-        self.assertEqual(len(g.edges), 1)
-        self.assertIn((1, 2), g.edges)
-        self.assertIn(2, g.vertices[1].leafs)
-        self.assertIn(1, g.vertices[2].roots)
-
-    def test_graph_init_edge_2(self):
+    def test_graph_add_edge_and_vertex_leaf_and_root(self):
         v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)
 
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
@@ -106,8 +154,10 @@ class TestGraph(unittest.TestCase):
         
         g = Graph(1, [v1, v2], [e1, e2])
         g.add_edge(e3)
+        
         self.assertEqual(len(g.edges), 3)
         self.assertIn((1, 3), g.edges)
+
         self.assertIn(3, g.vertices[1].roots)
         self.assertIn(2, g.vertices[1].leafs)
         self.assertIn(3, g.vertices[1].leafs)
@@ -120,6 +170,12 @@ class TestGraph(unittest.TestCase):
         self.assertIn(2, g.vertices[3].roots)
         self.assertIn(1, g.vertices[3].leafs)
         self.assertIn(2, g.vertices[3].leafs)
+
+    def test_graph_connected_components(self):
+        v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)
+        e1 = Edge(1, 1, 2, 10.0)
+        g = Graph(1, [v1, v2, v3], [e1])
+        self.assertEqual(g.get_connected_components(), 2)
 
     def test_graph_direction(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
@@ -185,6 +241,16 @@ class TestGraph(unittest.TestCase):
         self.assertFalse(isCyclic)
         self.assertEqual(isCyclic, not g.acyclical)
 
+    def test_graph_copy(self):
+        v1, v2 = Vertex(1), Vertex(2)
+        e = Edge(1, 1, 2, 10.0)
+        g1 = Graph(1, [v1, v2], [e])
+        g2 = g1.copy()
+        
+        self.assertEqual(g1.id, g2.id)
+        self.assertEqual(g1.edges[(1, 2)], g2.edges[(1, 2)])
+        g2.edges[(1, 2)].weight = 20.0
+        self.assertNotEqual(g1.edges[(1, 2)], g2.edges[(1, 2)])
 
     def test_graph_str(self):
         e = Edge(1, 1, 2, 4.5)
@@ -232,6 +298,32 @@ class TestTree(unittest.TestCase):
         with self.assertRaises(ValueError):
             Tree(1, [v1, v2, v3], [e])
 
+
+class TestNetwork(unittest.TestCase):
+
+    def test_network_initialization(self):
+        v1, v2 = Vertex(1), Vertex(2)
+        a = Arc(1, 1, 2, 10.0, 5.0)
+        n = Network(1, [v1, v2], [a], 1, 2)
+        self.assertEqual(n.id, 1)
+        self.assertTrue(n.st_connected)
+    
+    def test_network_residual_arcs(self):
+        v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)
+        a1 = Arc(1, 1, 2, 10.0, 5.0)
+        a2 = Arc(2, 2, 3, 7.0)
+        n = Network(1, [v1, v2, v3], [a1, a2], 1, 3)
+        self.assertEqual(len(n.edges), 4)  # Includes 2 original and 2 residual arcs
+
+    def test_network_flow_augmentation(self):
+        v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)
+        a1 = Arc(1, 1, 2, 10.0, 5.0)
+        a2 = Arc(2, 2, 3, 7.0)
+        n = Network(1, [v1, v2, v3], [a1, a2], 1, 3)
+        augmenting_path = [(1, 2), (2, 3)]
+        n.augment_along(augmenting_path, 5)
+        self.assertEqual(n.flow, 5)
+        self.assertEqual(n.edges[(1, 2)].flow, 10.0)
 
 if __name__ == '__main__':
     unittest.main()
