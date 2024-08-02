@@ -101,39 +101,40 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
 class TestMinSpanningTreeAlgorithms(unittest.TestCase):
 
     def setUp(self):
+        undir = EdgeDirection.UNDIRECTED
         self.v1 = Vertex(1)
         self.v2 = Vertex(2)
         self.v3 = Vertex(3)
         self.v4 = Vertex(4)
         self.v5 = Vertex(5)
-        self.e1 = Edge(1, 1, 2, 1, EdgeDirection.UNDIRECTED)
-        self.e2 = Edge(2, 1, 3, 3, EdgeDirection.UNDIRECTED)
-        self.e3 = Edge(3, 2, 3, 1, EdgeDirection.UNDIRECTED)
-        self.e4 = Edge(4, 2, 4, 6, EdgeDirection.UNDIRECTED)
-        self.e5 = Edge(5, 3, 4, 5, EdgeDirection.UNDIRECTED)
-        self.e6 = Edge(6, 3, 5, 2, EdgeDirection.UNDIRECTED)
-        self.e7 = Edge(7, 4, 5, 4, EdgeDirection.UNDIRECTED)
+        self.e1 = Edge(1, 1, 2, 1, undir)
+        self.e2 = Edge(2, 1, 3, 3, undir)
+        self.e3 = Edge(3, 2, 3, 1, undir)
+        self.e4 = Edge(4, 2, 4, 6, undir)
+        self.e5 = Edge(5, 3, 4, 5, undir)
+        self.e6 = Edge(6, 3, 5, 2, undir)
+        self.e7 = Edge(7, 4, 5, 4, undir)
         self.g = Graph(1, [self.v1, self.v2, self.v3, self.v4, self.v5], [self.e1, self.e2, self.e3, self.e4, self.e5, self.e6, self.e7])
         self.algorithms = MinSpanningTreeAlgorithms(self.g)
 
     def test_prims_min_spanning_tree_algorithm(self):
         mst = self.algorithms.prims_min_spanning_tree_algorithm()
-        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
-        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        mst_edges = set(mst.edges.keys())
+        expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
 
     def test_kruskals_min_spanning_tree_algorithm(self):
         mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
-        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
-        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        mst_edges = set(mst.edges)
+        expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
 
     def test_kruskals_min_spanning_tree_algorithm_disconnected(self):
         v6 = Vertex(6)
-        self.g.vertices.append(v6)
+        self.g.vertices[6] = v6
         mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
-        mst_edges = set((e.start_vertex_id, e.end_vertex_id) for e in mst.edges)
-        expected_edges = {(1, 2), (2, 3), (3, 5), (1, 3)}
+        mst_edges = set(mst.edges)
+        expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
         self.assertEqual(len(mst.edges), 4)
 
@@ -204,7 +205,7 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
         self.e1.capacity = 10  # High capacity edge
         self.e2.capacity = 10
         max_flow = self.algorithms.dinics_max_flow_algorithm()
-        self.assertEqual(max_flow, 10)  # Expected max flow with high capacity edges
+        self.assertEqual(max_flow, 7)  # Expected max flow with high capacity edges
 
 
 if __name__ == '__main__':

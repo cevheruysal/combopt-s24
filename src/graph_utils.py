@@ -51,7 +51,7 @@ def delta(Edges:Union[List[Edge], List[Arc]],
     notation for the edges that are incident to a given vertices list V_from and V_to 
     in a comprehensive graph G that presumably contains all edges in the system """
 
-    delta_edges = {"in":set(), "out":set(), "un-bi":set()}
+    delta_edges = {"in":set([]), "out":set([]), "un-bi":set([])}
     V_from_set, V_to_set = set(V_from), set(V_to)
     V_from_diff, V_to_diff = V_from_set.difference(V_to_set), V_to_set.difference(V_from_set)
 
@@ -101,4 +101,4 @@ def minimum_cost_edge_in_delta(delta:Dict[str, Set[Edge]]) -> Optional[Edge]:
                 min_edge = edge
                 min_weight = min_edge.weight
 
-    return min_edge.copy()
+    return min_edge

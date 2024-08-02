@@ -75,7 +75,7 @@ class UtilAlgorithms:
                         logger.info(f"Found augmenting path:{path} with flow {new_flow}")
                         return path, new_flow
                 
-                    queue.append((neighbor, new_flow))
+                    queue.appendleft((neighbor, new_flow))
         return None, 0
     
     @staticmethod
@@ -83,9 +83,9 @@ class UtilAlgorithms:
         if node == N.sink_node_id:
             return flow
 
-        # for v in self.network.vertices[u].leafs:
-        while start[node] < len(N.vertices[node].leafs):
-            leaf = N.vertices[node].leafs[start[node]]
+        for leaf in N.vertices[node].leafs:
+        # while start[node] < len(N.vertices[node].leafs):
+        #     leaf = N.vertices[node].leafs[start[node]]
 
             if (N.node_levels[leaf] == N.node_levels[node] + 1 and 
                 N.edges[(node, leaf)].remaining_capacity() > 0):
@@ -93,8 +93,8 @@ class UtilAlgorithms:
                 temp_flow = UtilAlgorithms.blocking_flow(N, leaf, curr_flow, start)
 
                 if temp_flow > 0:
-                    N.edges[(node, leaf)].alter_flow(-temp_flow)
-                    N.edges[(leaf, node)].alter_flow(+temp_flow)
+                    N.edges[(node, leaf)].alter_flow( temp_flow)
+                    N.edges[(leaf, node)].alter_flow(-temp_flow)
                     return temp_flow
             
             start[node] += 1
@@ -102,10 +102,6 @@ class UtilAlgorithms:
 
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
-        """
-        Input: an undirected, connected graph 𝐺 = (𝑉, 𝐸) with edge weights 𝑐 ∶ 𝐸 → Q.
-        Task: Find a spanning tree 𝑇 in 𝐺 such that 𝑐(𝐸(𝑇)) = ∑_{𝑒∈𝐸(𝑇)} 𝑐(𝑒) is minimized """
-
         self.graph = G
 
     def auto_run(self, start_vertex:int, goal_vertex:int) -> Optional[dict]:
@@ -271,6 +267,9 @@ class MinDistanceAlgorithms:
 class MinSpanningTreeAlgorithms:
     def __init__(self, G: Graph):
         """
+        Input: an undirected, connected graph 𝐺 = (𝑉, 𝐸) with edge weights 𝑐 ∶ 𝐸 → Q.
+        Task: Find a spanning tree 𝑇 in 𝐺 such that 𝑐(𝐸(𝑇)) = ∑_{𝑒∈𝐸(𝑇)} 𝑐(𝑒) is minimized
+
         Let (𝐺, 𝑐) be an instance of the minimum spanning tree problem with 𝐺 = (𝑉, 𝐸), 
         and let 𝑇 = (𝑉, 𝐸_𝑇) be a spanning tree in 𝐺. 
         Then the following statements are equivalent:
@@ -311,16 +310,19 @@ class MinSpanningTreeAlgorithms:
         Prim’s algorithm works correctly, i. e., it outputs a minimal spanning tree. 
         It can be implemented to run in time 𝒪(𝑛^2) """
 
-        v_0 = choice(self.graph.vertices)
+        v_0 = choice(tuple(self.graph.vertices.values()))
         T = Tree(Id="MST_Prims", V=[v_0], E=[])
 
         while len(T.vertices) < len(self.graph.vertices):
-            edge_list, from_vertices, to_vertices = (self.graph.edges, T.vertices.keys(), 
-                                                     [v for v in self.graph.vertices.keys() if v not in T.vertices.keys()])
+            edge_list = self.graph.edges.values()
+            from_vertices = T.vertices.keys()
+            to_vertices = [v for v in self.graph.vertices.keys() 
+                    if v not in from_vertices]
+
             delta_edges = delta(edge_list, from_vertices, to_vertices)
             min_cost_edge = minimum_cost_edge_in_delta(delta_edges)
             if min_cost_edge is None: break
-            T.add_edge(min_cost_edge)
+            T.add_edge(min_cost_edge.copy())
         
         if len(T.vertices) < len(self.graph.vertices):
             logger.warning("Tree doesn't span the entirety of the Graph!!")
@@ -344,15 +346,16 @@ class MinSpanningTreeAlgorithms:
 
         T = Tree(Id="MST_Kruskals", V=[], E=[])
         uf = UnionFind(self.graph.vertices.keys())
-        edge_heap = [(e.weight, e.copy()) for e in self.graph.edges.values()]
+        edge_heap = [e.copy() for e in self.graph.edges.values()]
         heapq.heapify(edge_heap)
 
         while len(edge_heap) > 0:
-            _, e = heapq.heappop(edge_heap)
+            e = heapq.heappop(edge_heap)
             v1, v2 = e.incident_vertex_ids
 
             if uf.find(v1) != uf.find(v2):
                 T.add_edge(e)
+                uf.union(v1, v2)
 
         if len(T.vertices) < len(self.graph.vertices):
             logger.warning("Tree doesn't span the entirety of the Graph!!")

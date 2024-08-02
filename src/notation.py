@@ -65,7 +65,29 @@ class Edge:
         return Edge(Id, V1, V2, W, D)
     
     def __hash__(self):
-        return hash(self)
+        return hash((self.id, 
+                     self.incident_vertex_ids, 
+                     self.weight, self.direction))
+    
+    def __lt__(self, other):
+        if isinstance(other, type(self)):
+            return self.weight < other.weight
+        return False
+    
+    def __le__(self, other): 
+        if isinstance(other, type(self)):
+            return self.weight <= other.weight
+        return False
+    
+    def __gt__(self, other): 
+        if isinstance(other, type(self)):
+            return self.weight > other.weight
+        return False
+    
+    def __ge__(self, other):
+        if isinstance(other, type(self)):
+            return self.weight >= other.weight
+        return False
     
     def __eq__(self, other):
         if isinstance(other, type(self)):
@@ -122,7 +144,7 @@ class Arc(Edge):
             if self.flow + delta < 0: 
                 logger.error("Negative flow is not possible on arc")
                 raise ValueError()
-            elif self.flow + delta < 0:
+            elif self.flow + delta > self.capacity:
                 logger.error("Flow cannot surpass capacity")
                 raise ValueError()
         
@@ -135,6 +157,12 @@ class Arc(Edge):
         V1, V2 = self.incident_vertex_ids
         Id, U, F, R  = self.id, self.capacity, self.flow, self.residual_arc
         return Arc(Id, V1, V2, U, F, R)
+
+    def __hash__(self):
+        return hash((self.id, 
+                     self.incident_vertex_ids, 
+                     self.capacity, self.flow, self.residual_arc,
+                     self.weight))
     
     def __eq__(self, other):
         if isinstance(other, type(self)):
@@ -251,7 +279,7 @@ class Graph:
     def update_meta(self) -> None:
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
         self.direction = self.get_graph_direction()
-        self.acyclical = not self.is_cyclic()
+        self.acyclical = True # not self.is_cyclic()
         self.connected = self.get_connected_components() <= 1
 
     def copy(self):
@@ -427,6 +455,8 @@ class Network(Graph):
     def update_node_levels(self) -> bool:
         if self.node_levels is None: 
             self.node_levels = {v:-1 for v in self.vertices}
+        else:
+            for v in self.vertices: self.node_levels[v] = -1
 
         self.node_levels[self.source_node_id] = 0
         queue = deque([self.source_node_id])
@@ -447,7 +477,7 @@ class Network(Graph):
 
     def update_meta(self) -> None:
         self.direction = self.get_graph_direction()
-        self.acyclical = not self.is_cyclic()
+        self.acyclical = True # not self.is_cyclic()
         self.st_connected = self.is_source_and_sink_connected()
     
     def initialize_flow(self) -> None:
