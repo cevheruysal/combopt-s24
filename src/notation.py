@@ -105,7 +105,7 @@ class Arc(Edge):
 
     def alter_flow(self, delta:float) -> None:
         if self.residual_arc:
-            self.capacity += delta
+            self.capacity -= delta
         else:
             self.flow += delta
     
@@ -437,8 +437,8 @@ class Network(Graph):
     def augment_along(self, P:List[Tuple[int, int]], f:float):
         self.flow += f
         for u, v in P:
-            self.edges[(u, v)].alter_flow(-f)
-            self.edges[(v, u)].alter_flow(+f)
+            self.edges[(u, v)].alter_flow(f)
+            self.edges[(v, u)].alter_flow(-f)
 
     def copy(self):
         return Network(self.id, 
