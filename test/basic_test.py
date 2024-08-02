@@ -3,14 +3,14 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
-from notation import Arc, Network, Vertex, Edge, Graph, Forest, Tree  # Adjust the import path as necessary
 from enums import EdgeDirection, GraphDirection
+from notation import Arc, Edge, Forest, Graph, Network, Tree, Vertex
 
 
 class TestVertex(unittest.TestCase):
-    
+
     def test_vertex_creation(self):
         v = Vertex(1)
         self.assertEqual(v.id, 1)
@@ -34,14 +34,12 @@ class TestVertex(unittest.TestCase):
 
     def test_vertex_str(self):
         v = Vertex(0, {1, 2, 3}, {4, 5})
-        expected_output = "Roots: v1, v2, v3\n" +\
-                          "Id:       V0\n" +\
-                          "Leafs: v4, v5\n"
+        expected_output = "Roots: v1, v2, v3\n" + "Id:       V0\n" + "Leafs: v4, v5\n"
         self.assertEqual(str(v), expected_output)
 
 
 class TestEdge(unittest.TestCase):
-    
+
     def test_edge_creation(self):
         e = Edge(1, 2, 3, 4.5)
         self.assertEqual(e.id, 1)
@@ -83,22 +81,22 @@ class TestArc(unittest.TestCase):
         self.assertEqual(a.capacity, 10.0)
         self.assertEqual(a.flow, 5.0)
         self.assertEqual(a.residual_arc, False)
-    
+
     def test_arc_remaining_capacity(self):
         a = Arc(1, 1, 2, 10.0, 5.0)
         self.assertEqual(a.remaining_capacity(), 5.0)
 
         a_res = Arc(1, 2, 1, 4.0, 0.0, True)
         self.assertEqual(a_res.remaining_capacity(), 4.0)
-    
+
     def test_arc_flow_methods(self):
         a_id, a_res_id, v1, v2, a_cap, a_flow = 0, 1, 1, 2, 10.0, 5.0
-        a     = Arc(a_id, v1, v2, a_cap, a_flow)
+        a = Arc(a_id, v1, v2, a_cap, a_flow)
         a_res = Arc(a_res_id, v2, v1, a_flow, 0.0, True)
 
         f = 4.5
-        dF = -2.3 # any float less than a.remaining_capacity()
-        
+        dF = -2.3  # any float less than a.remaining_capacity()
+
         a.set_flow(f)
         a_res.set_flow(f)
 
@@ -112,14 +110,14 @@ class TestArc(unittest.TestCase):
         a_res.alter_flow(-dF)
 
         self.assertEqual(a.flow, a_res.capacity)
-    
+
     def test_arc_copy(self):
         a1 = Arc(1, 1, 2, 10.0, 5.0)
         a2 = a1.copy()
         self.assertEqual(a1, a2)
         a2.flow = 7.0
         self.assertNotEqual(a1, a2)
-    
+
     def test_arc_string_representation(self):
         a = Arc(1, 1, 2, 10.0, 5.0)
         a_res1 = Arc(2, 2, 1, 5.0, 0.0, True)
@@ -151,21 +149,21 @@ class TestGraph(unittest.TestCase):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
         e2 = Edge(2, 2, 3, -1, EdgeDirection.BIDIRECTED)
         e3 = Edge(3, 1, 3, 3, EdgeDirection.UNDIRECTED)
-        
+
         g = Graph(1, [v1, v2], [e1, e2])
         g.add_edge(e3)
-        
+
         self.assertEqual(len(g.edges), 3)
         self.assertIn((1, 3), g.edges)
 
         self.assertIn(3, g.vertices[1].roots)
         self.assertIn(2, g.vertices[1].leafs)
         self.assertIn(3, g.vertices[1].leafs)
-        
+
         self.assertIn(1, g.vertices[2].roots)
         self.assertIn(3, g.vertices[2].roots)
         self.assertIn(3, g.vertices[2].leafs)
-        
+
         self.assertIn(1, g.vertices[3].roots)
         self.assertIn(2, g.vertices[3].roots)
         self.assertIn(1, g.vertices[3].leafs)
@@ -193,13 +191,11 @@ class TestGraph(unittest.TestCase):
         g2 = Graph(2, [], [e4])
         self.assertEqual(g2.get_graph_direction(), GraphDirection.UNDIRECTED)
 
-
     def test_digraph_isCyclic(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
         e2 = Edge(2, 2, 1, 4.5, EdgeDirection.DIRECTED)
         g = Graph(1, E=[e1, e2])
         self.assertTrue(g.is_cyclic())
-
 
     def test_ungraph_isNotCyclic(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.UNDIRECTED)
@@ -207,22 +203,19 @@ class TestGraph(unittest.TestCase):
         g = Graph(1, E=[e1, e2])
         self.assertFalse(g.is_cyclic())
 
-    
     def test_bigraph_isNotCyclic(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.BIDIRECTED)
         e2 = Edge(2, 2, 1, 4.5, EdgeDirection.BIDIRECTED)
         g = Graph(1, E=[e1, e2])
         self.assertFalse(g.is_cyclic())
 
-
     def test_digraph_isCyclic2(self):
         e1 = Edge(1, 1, 2, 4.5, EdgeDirection.DIRECTED)
         e2 = Edge(2, 2, 3, 4.5, EdgeDirection.DIRECTED)
         e3 = Edge(3, 3, 1, 4.5, EdgeDirection.DIRECTED)
-        
+
         g = Graph(1, E=[e1, e2, e3])
         self.assertTrue(g.is_cyclic())
-        
 
     def test_digraph_isCyclic3(self):
         V = [Vertex(i) for i in range(1, 9)]
@@ -246,7 +239,7 @@ class TestGraph(unittest.TestCase):
         e = Edge(1, 1, 2, 10.0)
         g1 = Graph(1, [v1, v2], [e])
         g2 = g1.copy()
-        
+
         self.assertEqual(g1.id, g2.id)
         self.assertEqual(g1.edges[(1, 2)], g2.edges[(1, 2)])
         g2.edges[(1, 2)].weight = 20.0
@@ -307,7 +300,7 @@ class TestNetwork(unittest.TestCase):
         n = Network(1, [v1, v2], [a], 1, 2)
         self.assertEqual(n.id, 1)
         self.assertTrue(n.st_connected)
-    
+
     def test_network_residual_arcs(self):
         v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)
         a1 = Arc(1, 1, 2, 10.0, 5.0)
@@ -325,5 +318,6 @@ class TestNetwork(unittest.TestCase):
         self.assertEqual(n.flow, 5)
         self.assertEqual(n.edges[(1, 2)].flow, 10.0)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

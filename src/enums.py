@@ -6,6 +6,7 @@ class EdgeDirection(Enum):
     DIRECTED = 1
     BIDIRECTED = 2
 
+
 class GraphDirection(Enum):
     UNDIRECTED = 0
     DIRECTED = 1
@@ -21,14 +22,14 @@ class MinDistanceAlgorithmsEnum(Enum):
     FLOYD_WARSHALL = 4
     A_STAR = 5
 
+
 class MinSpanningTreeAlgorithmsEnum(Enum):
     AUTOMATIC = 0
     PRIMS = 1
     KRUSKALS = 2
 
+
 class MaxFlowAlgorithmsEnum(Enum):
     FORD_FULKERSON = 1
     EDMONDS_KARP = 2
     DINICS = 3
-    PUSH_RELABEL = 4
-
