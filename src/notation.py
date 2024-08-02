@@ -279,7 +279,7 @@ class Graph:
     def update_meta(self) -> None:
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
         self.direction = self.get_graph_direction()
-        self.acyclical = True # not self.is_cyclic()
+        self.acyclical = not self.is_cyclic()
         self.connected = self.get_connected_components() <= 1
 
     def copy(self):
@@ -477,7 +477,7 @@ class Network(Graph):
 
     def update_meta(self) -> None:
         self.direction = self.get_graph_direction()
-        self.acyclical = True # not self.is_cyclic()
+        self.acyclical = not self.is_cyclic()
         self.st_connected = self.is_source_and_sink_connected()
     
     def initialize_flow(self) -> None:

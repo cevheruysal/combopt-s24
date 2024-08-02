@@ -139,25 +139,25 @@ class TestMinSpanningTreeAlgorithms(unittest.TestCase):
         self.assertEqual(len(mst.edges), 4)
 
     def test_prims_min_spanning_tree_algorithm_single_vertex(self):
-        single_vertex_graph = Graph(2, [self.v1], [])
+        single_vertex_graph = Graph(2, [Vertex(1)], [])
         single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
         mst = single_vertex_algorithms.prims_min_spanning_tree_algorithm()
         self.assertEqual(len(mst.edges), 0)
 
     def test_kruskals_min_spanning_tree_algorithm_single_vertex(self):
-        single_vertex_graph = Graph(2, [self.v1], [])
+        single_vertex_graph = Graph(2, [Vertex(1)], [])
         single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
         mst = single_vertex_algorithms.kruskals_min_spanning_tree_algorithm()
         self.assertEqual(len(mst.edges), 0)
 
     def test_prims_min_spanning_tree_algorithm_no_edges(self):
-        no_edge_graph = Graph(2, [self.v1, self.v2], [])
+        no_edge_graph = Graph(2, [Vertex(1), Vertex(2)], [])
         no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
         mst = no_edge_algorithms.prims_min_spanning_tree_algorithm()
         self.assertEqual(len(mst.edges), 0)
 
     def test_kruskals_min_spanning_tree_algorithm_no_edges(self):
-        no_edge_graph = Graph(2, [self.v1, self.v2], [])
+        no_edge_graph = Graph(2, [Vertex(1), Vertex(2)], [])
         no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
         mst = no_edge_algorithms.kruskals_min_spanning_tree_algorithm()
         self.assertEqual(len(mst.edges), 0)
@@ -205,7 +205,7 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
         self.e1.capacity = 10  # High capacity edge
         self.e2.capacity = 10
         max_flow = self.algorithms.dinics_max_flow_algorithm()
-        self.assertEqual(max_flow, 7)  # Expected max flow with high capacity edges
+        self.assertEqual(max_flow, 7)  # Expected max flow with high capacity edge
 
 
 if __name__ == '__main__':

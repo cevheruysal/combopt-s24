@@ -311,7 +311,7 @@ class MinSpanningTreeAlgorithms:
         It can be implemented to run in time 𝒪(𝑛^2) """
 
         v_0 = choice(tuple(self.graph.vertices.values()))
-        T = Tree(Id="MST_Prims", V=[v_0], E=[])
+        T = Tree(Id="MST_Prims", V=[Vertex(v_0.id)], E=[])
 
         while len(T.vertices) < len(self.graph.vertices):
             edge_list = self.graph.edges.values()
