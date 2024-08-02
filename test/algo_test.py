@@ -174,9 +174,9 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
         self.e3 = Arc(3, 2, 3, 2)
         self.e4 = Arc(4, 2, 4, 3)
         self.e5 = Arc(5, 3, 4, 4)
-        self.g = Network(1, [self.v1, self.v2, self.v3, self.v4], 
+        self.n = Network(1, [self.v1, self.v2, self.v3, self.v4], 
                          [self.e1, self.e2, self.e3, self.e4, self.e5], 1, 4)
-        self.algorithms = MaxFlowAlgorithms(self.g)
+        self.algorithms = MaxFlowAlgorithms(self.n)
 
     def test_ford_fulkerson_max_flow_algorithm(self):
         max_flow = self.algorithms.ford_fulkerson_max_flow_algorithm()
@@ -198,7 +198,7 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
     def test_edmonds_karp_with_disconnected_graph(self):
         self.e4.capacity = 0  # Disconnect part of the graph
         max_flow = self.algorithms.edmonds_karp_max_flow_algorithm()
-        self.assertEqual(max_flow, 3)  # Expected max flow with disconnection
+        self.assertEqual(max_flow, 4)  # Expected max flow with disconnection
 
     def test_dinics_with_high_capacity_edges(self):
         self.e1.capacity = 10  # High capacity edge

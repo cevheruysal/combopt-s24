@@ -72,7 +72,7 @@ class UtilAlgorithms:
                 
                     if neighbor == N.sink_node_id:
                         path = construct_path_to_node(parent_dict, N.sink_node_id)
-                        logger.info(f"Found augmenting path with flow {new_flow}")
+                        logger.info(f"Found augmenting path:{path} with flow {new_flow}")
                         return path, new_flow
                 
                     queue.append((neighbor, new_flow))
