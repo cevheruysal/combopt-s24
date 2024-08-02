@@ -1,3 +1,4 @@
+from collections import deque
 import logging
 from typing import Optional, List, Dict, Set, Tuple, Union
 
@@ -53,8 +54,10 @@ class Edge:
         self.weight = W
         self.direction = D
     
-    def sort_key(self, C) -> int:
-        return self.weight * C**2 + self.incident_vertex_ids[0] * C + self.incident_vertex_ids[1]
+    def sort_key(self, C:int) -> float:
+        return self.weight * C**2 + \
+               self.incident_vertex_ids[0] * C + \
+               self.incident_vertex_ids[1]
         
     def copy(self):
         V1, V2 = self.incident_vertex_ids
@@ -89,18 +92,18 @@ class Arc(Edge):
         self.flow = F
         self.residual_arc = R
 
-    def sort_key(self, C) -> int:
+    def sort_key(self, C:int) -> float:
         return self.capacity * C**2 + \
                self.incident_vertex_ids[0] * C + \
                self.incident_vertex_ids[1]
     
-    def set_flow(self, value) -> None:
+    def set_flow(self, value:float) -> None:
         if self.residual_arc:
             self.capacity == value
         else:
             self.flow == value
 
-    def alter_flow(self, delta) -> None:
+    def alter_flow(self, delta:float) -> None:
         if self.residual_arc:
             self.capacity += delta
         else:
@@ -327,12 +330,15 @@ class Network(Graph):
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Arc] = {}
         self.connected_components = UnionFind()
-        self.has_negative_capacity: Optional[bool] = None
+        self.node_levels: Dict[int, int] = {}
+
         self.direction: Optional[str] = None
         self.acyclical: Optional[bool] = None
+        self.st_connected: Optional[bool] = None
         
         self.init_vertices(V)
         self.init_arcs(A)
+        self.update_node_levels()
         self.update_meta()
 
         if s not in self.vertices.keys() or t not in self.vertices.keys() or s == t:
@@ -343,19 +349,19 @@ class Network(Graph):
         self.sink_node_id = t
         self.flow = f
 
-        if not self.check_if_source_and_sink_connected():
+        if not self.st_connected:
             logger.error("Source and sink nodes must be connected")
             raise ValueError()
         
     def refactor_antiparallel_arcs(self, A:List[Arc]) -> List[Arc]:
-        incident_vertices_set = {a.incident_vertex_ids for a in A}
         residual_filtered_A = [a for a in A if not a.residual_arc]
+        incident_vertex_set = {a.incident_vertex_ids for a in residual_filtered_A}
         new_arcs = []
 
         for a in residual_filtered_A:
             v1, v2 = a.incident_vertex_ids
             
-            if (v2, v1) in incident_vertices_set:
+            if (v2, v1) in incident_vertex_set:
                 b: Optional[Arc] = next((b for b in A if b.incident_vertex_ids == (v2, v1)), None)
                 if b is None: continue
                 
@@ -396,15 +402,28 @@ class Network(Graph):
         self.init_edges(A_new)
         self.init_edges(residual_arcs)
 
-    def update_meta(self) -> None:
-        self.has_negative_capacity = any(a.capacity < 0 for a in self.edges.values())
-        self.direction = self.get_graph_direction()
-        self.acyclical = not self.is_cyclic()
-        self.connected = self.get_connected_components() <= 1
+    def update_node_levels(self) -> bool:
+        self.node_levels[self.source_node_id] = 0
+        queue = deque([self.source_node_id])
+        
+        while queue:
+            u = queue.popleft()
+            for v in self.vertices[u].leafs:
+                arc = self.edges[(u, v)]
+                if self.node_levels[v] < 0 and arc.remaining_capacity() > 0:
+                    self.node_levels[v] = self.node_levels[u] + 1
+                    queue.append(v)
+        
+        return self.node_levels[self.sink_node_id] != -1
 
-    def check_if_source_and_sink_connected(self) -> bool:
+    def is_source_and_sink_connected(self) -> bool:
         return self.connected_components.find(self.source_node_id) == \
                self.connected_components.find(self.sink_node_id)
+
+    def update_meta(self) -> None:
+        self.direction = self.get_graph_direction()
+        self.acyclical = not self.is_cyclic()
+        self.st_connected = self.is_source_and_sink_connected()
     
     def initialize_flow(self) -> None:
         self.flow = 0

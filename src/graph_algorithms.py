@@ -77,6 +77,28 @@ class UtilAlgorithms:
                 
                     queue.append((neighbor, new_flow))
         return None, 0
+    
+    @staticmethod
+    def blocking_flow(N:Network, node:int, flow:int, start:Dict[int, int]) -> int:
+        if node == N.sink_node_id:
+            return flow
+
+        # for v in self.network.vertices[u].leafs:
+        while start[node] < len(N.vertices[node].leafs):
+            leaf = N.vertices[node].leafs[start[node]]
+
+            if (N.node_levels[leaf] == N.node_levels[node] + 1 and 
+                N.edges[(node, leaf)].remaining_capacity() > 0):
+                curr_flow = min(flow, N.edges[(node, leaf)].remaining_capacity())
+                temp_flow = UtilAlgorithms.blocking_flow(N, leaf, curr_flow, start)
+
+                if temp_flow > 0:
+                    N.edges[(node, leaf)].alter_flow(-temp_flow)
+                    N.edges[(leaf, node)].alter_flow(+temp_flow)
+                    return temp_flow
+            
+            start[node] += 1
+        return 0
 
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
@@ -386,13 +408,15 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         6 return 𝑓 """
 
         self.network.initialize_flow()
+        augmentation_count = 0
 
         while True:
             path, flow = UtilAlgorithms.find_st_path(self.network)
             if path is None or flow == 0: break
             self.network.augment_along(path, flow)
+            augmentation_count += 1
 
-        logger.info(f"Found maximum flow using Ford-Fulkerson: {self.network.flow}")
+        logger.info(f"Found maximum flow in {augmentation_count} augmentation iterations using Ford-Fulkerson: {self.network.flow}")
         return self.network.flow
 
     def edmonds_karp_max_flow_algorithm(self) -> float:
@@ -411,56 +435,46 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         It can be implemented such that it computes a maximum network flow in time 𝒪(𝑚^2*𝑛) """
 
         self.network.initialize_flow()
+        augmentation_count = 0
 
         while True:
             path, flow = UtilAlgorithms.find_st_path(self.network)
-            if path is None: break
+            if path is None or flow == 0: break
             self.network.augment_along(path, flow)
+            augmentation_count += 1
 
-        logger.info(f"Found maximum flow using Edmonds-Karp: {self.network.flow}")
+        logger.info(f"Found maximum flow in {augmentation_count} augmentation iterations using Edmonds-Karp: {self.network.flow}")
         return self.network.flow
 
     def dinics_max_flow_algorithm(self) -> int:
-        max_flow = 0
+        """
+        input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
+        output: a maximum 𝑠-𝑡 flow 𝑓 in 𝑁
+        1 initialize 𝑓 ∶= 0
+        2 while there exists an 𝑓-augmenting path in 𝑁𝑓 do
+            3 initialize the layered residual network 𝑁^𝐿_𝑓
+            4 while there exists an 𝑠-𝑡-path in 𝑁^𝐿_𝑓 do
+                5 determine a node 𝑣 ∈ 𝑉(𝑁^𝐿_𝑓 ) of minimum throughput 𝑝(𝑣)
+                6 determine flow augmentation 𝑓′ through PushFlow(𝑁^𝐿_𝑓 , 𝑣, 𝑝(𝑣)) 
+                            and PullFlow(𝑁^𝐿_𝑓 , 𝑣, 𝑝(𝑣))
+                7 update 𝑓 through augmenting by 𝑓′
+                8 update 𝑁^𝐿_𝑓 : update capacities and throughput, 
+                                 remove nodes with throughput 0, 
+                                 remove arcs with capacity 0
+            9 determine 𝑁_𝑓 with the current flow 𝑓
+        10 return 𝑓 """
 
-        while self._bfs_level_graph():
-            start = [0] * len(self.network.vertices)
+        self.network.initialize_flow()
+
+        while self.network.update_node_levels():
+            start = {v: 0 for v in self.network.vertices}
             while True:
-                flow = self._dfs_blocking_flow(float('inf'), start)
-                if flow == 0:
-                    break
-                max_flow += flow
+                flow = UtilAlgorithms.blocking_flow(self.network, 
+                                                    self.network.source_node_id, 
+                                                    float('inf'), start)
+                if flow == 0: break
+                self.network.flow += flow 
 
-        logger.info(f"Found maximum flow using Dinic's algorithm: {max_flow}")
-        return max_flow
+        logger.info(f"Found maximum flow using Dinic's algorithm: {self.network.flow}")
 
-    def _bfs_level_graph(self, source, sink):
-        level = {v: -1 for v in self.network.vertices}
-        level[source] = 0
-        queue = [source]
-        
-        while queue:
-            u = queue.pop(0)
-            for v in self.network.vertices[u].leafs:
-                arc = self.network.edges[(u, v)]
-                if level[v] < 0 and arc.remaining_capacity > 0:
-                    level[v] = level[u] + 1
-                    queue.append(v)
-        
-        self.level = level
-        return level[sink] != -1
-
-    def _dfs_blocking_flow(self, u, sink, flow, start):
-        if u == sink:
-            return flow
-        while start[u] < len(self.network.vertices[u].leafs):
-            v = self.network.vertices[u].leafs[start[u]]
-            if self.level[v] == self.level[u] + 1 and self.residual_graph[u][v] > 0:
-                curr_flow = min(flow, self.residual_graph[u][v])
-                temp_flow = self._dfs_blocking_flow(v, sink, curr_flow, start)
-                if temp_flow > 0:
-                    self.residual_graph[u][v] -= temp_flow
-                    self.residual_graph[v][u] += temp_flow
-                    return temp_flow
-            start[u] += 1
-        return 0
+        return self.network.flow
