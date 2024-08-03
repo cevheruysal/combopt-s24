@@ -270,16 +270,6 @@ class Graph:
                 if self.is_cyclic_dfs(v, visited, rec_stack, parent):
                     return True
         return False
-    
-    
-    def get_connected_components(self) -> int:
-        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
-        return len(unique_components)
-
-
-    def get_connected_components(self) -> int:
-        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
-        return len(unique_components)
 
     def update_meta(self) -> None:
         self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())

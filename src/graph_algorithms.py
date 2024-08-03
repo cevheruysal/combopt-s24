@@ -10,7 +10,7 @@ from enums import (MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum,
                    MinSpanningTreeAlgorithmsEnum)
 from graph_utils import (construct_path_to_node, delta,
                          minimum_cost_edge_in_delta)
-from notation import Edge, Graph, Network, Tree, Vertex
+from notation import Graph, Network, Tree, Vertex
 from util_structs import UnionFind
 
 logging.basicConfig(
@@ -70,9 +70,7 @@ class UtilAlgorithms:
 
                     if neighbor == N.sink_node_id:
                         path = construct_path_to_node(parent_dict, N.sink_node_id)
-                        logger.info(
-                            f"Found augmenting path:{path} with flow {new_flow}"
-                        )
+                        logger.info(f"Found augmenting path:{path} with flow {new_flow}")
                         return path, new_flow
 
                     queue.appendleft((neighbor, new_flow))
@@ -404,7 +402,7 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
 
         super().__init__(N)
 
-    def run(self, 
+    def run(self,
             use_algorithm: MaxFlowAlgorithmsEnum = MaxFlowAlgorithmsEnum.EDMONDS_KARP) -> int:
         result = None
 

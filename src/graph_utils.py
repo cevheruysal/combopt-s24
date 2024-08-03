@@ -87,21 +87,21 @@ def cut(N: Network, C: List[Vertex]) -> Tuple[Set[Arc], int, bool]:
     C_set = {c.id for c in C}
     C_bar = N_vertices_set.difference(C_set)
 
-    delta = delta(N.edges, C_set, C_bar)
+    delta_edges = delta(N.edges, C_set, C_bar)
 
-    cut_arcs = delta["out"]
+    cut_arcs = delta_edges["out"]
     cut_capacity = sum([arc.capacity for arc in cut_arcs])
     s_t_cut = N.source_node_id in C_set and N.sink_node_id in C_bar
 
     return (cut_arcs, cut_capacity, s_t_cut)
 
 
-def minimum_cost_edge_in_delta(delta: Dict[str, Set[Edge]]) -> Optional[Edge]:
+def minimum_cost_edge_in_delta(delta_edges: Dict[str, Set[Edge]]) -> Optional[Edge]:
     min_edge = None
     min_weight = float("inf")
 
-    for set in delta.values():
-        for edge in set:
+    for edges in delta_edges.values():
+        for edge in edges:
             if edge.weight < min_weight:
                 min_edge = edge
                 min_weight = min_edge.weight
