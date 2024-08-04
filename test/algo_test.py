@@ -51,22 +51,22 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
         self.algorithms = MinDistanceAlgorithms(self.g)
 
     def test_topological_sort_min_dist_algorithm(self):
-        result = self.algorithms.topological_sort_min_dist_algorithm(1)
+        result = self.algorithms.topological_sort(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_dijkstras_min_dist_algorithm(self):
-        result = self.algorithms.dijkstras_min_dist_algorithm(1)
+        result = self.algorithms.dijkstras(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_bellman_fords_min_dist_algorithm(self):
-        result = self.algorithms.bellman_fords_min_dist_algorithm(1)
+        result = self.algorithms.bellman_fords(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
     def test_floyd_warshall_min_dist_algorithm(self):
-        result = self.algorithms.floyd_warshall_min_dist_algorithm(1)
+        result = self.algorithms.floyd_warshall(1)
         expected = {1: 0, 2: 1, 3: 2, 4: 3}
         self.assertEqual(result, expected)
 
@@ -74,20 +74,20 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
         def heuristic(a, b):
             return 1  # Dummy heuristic for testing
 
-        result = self.algorithms.a_star_min_dist_algorithm(1, 4, heuristic)
+        result = self.algorithms.a_star(1, 4, heuristic)
         expected = [1, 2, 3, 4]
         self.assertEqual(result, expected)
 
-    @patch.object(MinDistanceAlgorithms, "topological_sort_min_dist_algorithm")
-    @patch.object(MinDistanceAlgorithms, "dijkstras_min_dist_algorithm")
-    @patch.object(MinDistanceAlgorithms, "bellman_fords_min_dist_algorithm")
+    @patch.object(MinDistanceAlgorithms, "topological_sort")
+    @patch.object(MinDistanceAlgorithms, "dijkstras")
+    @patch.object(MinDistanceAlgorithms, "bellman_fords")
     def test_run(self, mock_bellman, mock_dijkstra, mock_topo):
         mock_topo.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
         mock_dijkstra.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
         mock_bellman.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
 
         self.g.direction = True
-        self.g.acyclical = True
+        self.g.is_acyclical = True
         result = self.algorithms.run(1, 4, MinDistanceAlgorithmsEnum.TOPOLOGICAL_SORT)
         mock_topo.assert_called_once()
         self.assertEqual(result, {1: 0, 2: 1, 3: 2, 4: 3})
@@ -128,13 +128,13 @@ class TestMinSpanningTreeAlgorithms(unittest.TestCase):
         self.algorithms = MinSpanningTreeAlgorithms(self.g)
 
     def test_prims_min_spanning_tree_algorithm(self):
-        mst = self.algorithms.prims_min_spanning_tree_algorithm()
+        mst = self.algorithms.prims()
         mst_edges = set(mst.edges.keys())
         expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
 
     def test_kruskals_min_spanning_tree_algorithm(self):
-        mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
+        mst = self.algorithms.kruskals()
         mst_edges = set(mst.edges)
         expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
@@ -142,7 +142,7 @@ class TestMinSpanningTreeAlgorithms(unittest.TestCase):
     def test_kruskals_min_spanning_tree_algorithm_disconnected(self):
         v6 = Vertex(6)
         self.g.vertices[6] = v6
-        mst = self.algorithms.kruskals_min_spanning_tree_algorithm()
+        mst = self.algorithms.kruskals()
         mst_edges = set(mst.edges)
         expected_edges = {(1, 2), (2, 3), (3, 5), (4, 5)}
         self.assertEqual(mst_edges, expected_edges)
@@ -151,25 +151,25 @@ class TestMinSpanningTreeAlgorithms(unittest.TestCase):
     def test_prims_min_spanning_tree_algorithm_single_vertex(self):
         single_vertex_graph = Graph(2, [Vertex(1)], [])
         single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
-        mst = single_vertex_algorithms.prims_min_spanning_tree_algorithm()
+        mst = single_vertex_algorithms.prims()
         self.assertEqual(len(mst.edges), 0)
 
     def test_kruskals_min_spanning_tree_algorithm_single_vertex(self):
         single_vertex_graph = Graph(2, [Vertex(1)], [])
         single_vertex_algorithms = MinSpanningTreeAlgorithms(single_vertex_graph)
-        mst = single_vertex_algorithms.kruskals_min_spanning_tree_algorithm()
+        mst = single_vertex_algorithms.kruskals()
         self.assertEqual(len(mst.edges), 0)
 
     def test_prims_min_spanning_tree_algorithm_no_edges(self):
         no_edge_graph = Graph(2, [Vertex(1), Vertex(2)], [])
         no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
-        mst = no_edge_algorithms.prims_min_spanning_tree_algorithm()
+        mst = no_edge_algorithms.prims()
         self.assertEqual(len(mst.edges), 0)
 
     def test_kruskals_min_spanning_tree_algorithm_no_edges(self):
         no_edge_graph = Graph(2, [Vertex(1), Vertex(2)], [])
         no_edge_algorithms = MinSpanningTreeAlgorithms(no_edge_graph)
-        mst = no_edge_algorithms.kruskals_min_spanning_tree_algorithm()
+        mst = no_edge_algorithms.kruskals()
         self.assertEqual(len(mst.edges), 0)
 
 
@@ -195,31 +195,35 @@ class TestMaxFlowAlgorithms(unittest.TestCase):
         self.algorithms = MaxFlowAlgorithms(self.n)
 
     def test_ford_fulkerson_max_flow_algorithm(self):
-        max_flow = self.algorithms.ford_fulkerson_max_flow_algorithm()
+        max_flow = self.algorithms.ford_fulkerson()
         self.assertEqual(max_flow, 6)
 
     def test_edmonds_karp_max_flow_algorithm(self):
-        max_flow = self.algorithms.edmonds_karp_max_flow_algorithm()
+        max_flow = self.algorithms.edmonds_karp()
         self.assertEqual(max_flow, 6)
 
     def test_dinics_max_flow_algorithm(self):
-        max_flow = self.algorithms.dinics_max_flow_algorithm()
+        max_flow = self.algorithms.dinics()
+        self.assertEqual(max_flow, 6)
+
+    def test_push_relabel_max_flow_algorithmI(self):
+        max_flow = self.algorithms.push_relabel()
         self.assertEqual(max_flow, 6)
 
     def test_ford_fulkerson_with_bottleneck(self):
         self.e1.capacity = 2
-        max_flow = self.algorithms.ford_fulkerson_max_flow_algorithm()
+        max_flow = self.algorithms.ford_fulkerson()
         self.assertEqual(max_flow, 5)
 
     def test_edmonds_karp_with_disconnected_graph(self):
         self.e4.capacity = 0
-        max_flow = self.algorithms.edmonds_karp_max_flow_algorithm()
+        max_flow = self.algorithms.edmonds_karp()
         self.assertEqual(max_flow, 4)
 
     def test_dinics_with_high_capacity_edges(self):
         self.e1.capacity = 10
         self.e2.capacity = 10
-        max_flow = self.algorithms.dinics_max_flow_algorithm()
+        max_flow = self.algorithms.dinics()
         self.assertEqual(max_flow, 7)
 
 

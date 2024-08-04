@@ -15,39 +15,70 @@ logger = logging.getLogger(__name__)
 
 
 class Vertex:
-    def __init__(self, Id:int, 
-                 RootNeighbors:Optional[Set[int]] = None, 
-                 LeafNeighbors:Optional[Set[int]] = None):
+    __slots__ = ["id", 
+                 "roots", "leafs", 
+                 "excess_flow", "charge"]
+    
+    def __init__(self, Id: int,
+                 RootNeighbors: Optional[Set[int]] = None,
+                 LeafNeighbors: Optional[Set[int]] = None,
+                 ExcessFlow: float = 0.0, Charge: float = 0.0):
         self.id = Id
         self.roots = RootNeighbors if RootNeighbors is not None else set()
         self.leafs = LeafNeighbors if LeafNeighbors is not None else set()
+        self.excess_flow = ExcessFlow
+        self.charge = Charge
+
+    def set_excess_flow(self, value: float) -> None:
+        self.excess_flow = value
+
+    def alter_excess_flow(self, delta: float) -> None:
+        self.excess_flow += delta
 
     def copy(self):
-        return Vertex(self.id, self.roots.copy(), self.leafs.copy())
+        return Vertex(self.id,
+                      self.roots.copy(), self.leafs.copy(),
+                      self.excess_flow, self.charge)
 
     def __hash__(self):
-        return hash((self.id, tuple(self.roots), tuple(self.leafs)))
+        return hash((self.id,
+                     tuple(self.roots), tuple(self.leafs),
+                     self.excess_flow, self.charge))
 
     def __eq__(self, other):
         if isinstance(other, type(self)):
-            return (self.id == other.id 
-                    and self.roots == other.roots 
-                    and self.leafs == other.leafs)
+            return (self.id == other.id
+                    and self.roots == other.roots
+                    and self.leafs == other.leafs
+                    and self.excess_flow == other.excess_flow
+                    and self.charge == other.charge)
         return False
 
     def __str__(self):
-        roots_line = "Roots: " + ", ".join(["v" + str(v) for v in self.roots]) if len(self.roots) > 0 else "Roots: None"
-        leafs_line = "Leafs: " + ", ".join(["v" + str(v) for v in self.leafs]) if len(self.leafs) > 0 else "Leafs: None"
+        roots_line = ("Roots: " + ", ".join(["v" + str(v) for v in self.roots])
+                      if len(self.roots) > 0
+                      else "Roots: None")
+
+        leafs_line = ("Leafs: " + ", ".join(["v" + str(v) for v in self.leafs])
+                      if len(self.leafs) > 0
+                      else "Leafs: None")
+
         space_count = (len(roots_line) + len(leafs_line)) // 4 - 1
-        vertx_line = "Id: " + " " * space_count + "V" + str(self.id)
+
+        vertx_line = "Id: " + " " * space_count + "V" + str(self.id) + \
+                     (f"with load {self.charge}"
+                      if self.charge != 0.0
+                      else "")
 
         return roots_line + "\n" + vertx_line + "\n" + leafs_line + "\n"
 
 
 class Edge:
-    def __init__(self, Id:int,
-                 V1:int, V2:int, W:float = 0, 
-                 D:EdgeDirection = EdgeDirection.DIRECTED):
+    __slots__ = ["id", "incident_vertex_ids", "weight", "direction"]
+
+    def __init__(self, Id: int,
+                 V1: int, V2: int, W: float = 0.0,
+                 D: EdgeDirection = EdgeDirection.DIRECTED):
         self.id = Id
         self.incident_vertex_ids = (V1, V2)
         self.weight = W
@@ -57,7 +88,7 @@ class Edge:
         return self.weight * C**2 + \
                self.incident_vertex_ids[0] * C + \
                self.incident_vertex_ids[1]
-        
+
     def copy(self):
         V1, V2 = self.incident_vertex_ids
         Id, W, D = self.id, self.weight, self.direction
@@ -105,25 +136,31 @@ class Edge:
 
 
 class Arc(Edge):
-    def __init__(self, Id: int, V1: int, V2: int, U: float = 0, F: float = 0, R: bool = False):
-        super().__init__(Id, V1, V2)
+    __slots__ = ["capacity", "flow", "residual_arc"]
+
+    def __init__(self, Id: int,
+                 V1: int, V2: int,
+                 U: float = 0, F: float = 0, R: bool = False,
+                 W: float = 0):
+        super().__init__(Id, V1, V2, W)
         self.capacity = U
         self.flow = F
         self.residual_arc = R
 
     def sort_key(self, C: int) -> float:
-        return (self.capacity * C**2
+        return (self.weight * C**3
+                + self.capacity * C**2
                 + self.incident_vertex_ids[0] * C
                 + self.incident_vertex_ids[1])
 
     def set_flow(self, value: float) -> None:
-        if value < 0: 
+        if value < 0:
             raise ValueError("Flow value cannot be nagative")
 
         if self.residual_arc:
             self.capacity = value
         else:
-            if value > self.capacity: 
+            if value > self.capacity:
                 raise ValueError("Flow value cannot surpass arc capacity")
             self.flow = value
 
@@ -175,14 +212,19 @@ class Arc(Edge):
 
 
 class Graph:
+    __slots__ = ["id", "vertices", "edges", "connected_components",
+                 "is_acyclical", "is_connected", "direction", "has_negative_weight"]
+
     def __init__(self, Id: Union[int, str], V: List[Vertex] = [], E: List[Edge] = []):
         self.id: int = Id
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Edge] = {}
         self.connected_components = UnionFind([])
+
+        self.is_acyclical: Optional[bool] = None
+        self.is_connected: Optional[bool] = None
+        self.direction: Optional[GraphDirection] = None
         self.has_negative_weight: Optional[bool] = None
-        self.direction: Optional[str] = None
-        self.acyclical: Optional[bool] = None
 
         self.init_vertices(V)
         self.init_edges(E)
@@ -219,18 +261,11 @@ class Graph:
         E.sort(key=lambda e: e.sort_key(constant))
         for e in E: self.add_edge(e)
 
-    def get_graph_direction(self) -> GraphDirection:
-        directions = {edge.direction for edge in self.edges.values()}
-        if len(directions) == 1:
-            return GraphDirection[directions.pop().name]
-        return GraphDirection.MIXED
-
-    def get_connected_components(self) -> int:
-        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
-        return len(unique_components)
-
-    def is_cyclic_dfs(self, v: Vertex, 
-                      visited: Set[int], rec_stack: Set[int], parent: Dict[int, int]) -> bool:
+    def is_cyclic_dfs(self, 
+                      v: Vertex, 
+                      visited: Set[int], 
+                      rec_stack: Set[int], 
+                      parent: Dict[int, int]) -> bool:
         visited.add(v.id)
         rec_stack.add(v.id)
 
@@ -271,11 +306,24 @@ class Graph:
                     return True
         return False
 
+    def get_connected_components(self) -> int:
+        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
+        return len(unique_components)
+
+    def get_graph_direction(self) -> GraphDirection:
+        directions = {edge.direction for edge in self.edges.values()}
+        if len(directions) == 1:
+            return GraphDirection[directions.pop().name]
+        return GraphDirection.MIXED
+
+    def get_has_negative_weight(self) -> bool:
+        return any(e.weight < 0 for e in self.edges.values())
+
     def update_meta(self) -> None:
-        self.has_negative_weight = any(e.weight < 0 for e in self.edges.values())
+        self.is_acyclical = not self.is_cyclic()
+        self.is_connected = self.get_connected_components() <= 1
         self.direction = self.get_graph_direction()
-        self.acyclical = not self.is_cyclic()
-        self.connected = self.get_connected_components() <= 1
+        self.has_negative_weight = self.get_has_negative_weight()
 
     def copy(self):
         return Graph(self.id,
@@ -288,7 +336,7 @@ class Graph:
             + ("This is a directed " if self.direction else "This is an undirected ")
             + (
                 "acyclic graph "
-                if self.acyclical
+                if self.is_acyclical
                 else "graph that possibly includes cycles "
             )
             + "with "
@@ -318,7 +366,7 @@ class Forest(Graph):
         (ii) A subgraph 𝐹 of 𝐺 with 𝑉(𝐹) = 𝑉 is called spanning forest of 𝐺 if 𝐹 is a forest """
 
         super().__init__(Id, V, E)
-        if not self.acyclical:
+        if not self.is_acyclical:
             raise ValueError("A forest cannot contain cycles")
 
 
@@ -334,13 +382,15 @@ class Tree(Forest):
         (vi) 𝐺 is cycle-free and |𝐸| = |𝑉| − 1 """
 
         super().__init__(Id, V, E)
-        if not self.connected:
+        if not self.is_connected:
             raise ValueError("A tree must be connected")
 
 
 class Network(Graph):
-    def __init__(self,
-                 Id: Union[int, str], V: List[Vertex], A: List[Arc],
+    __slots__ = ["node_levels", "is_st_connected", 
+                 "source_node_id", "sink_node_id", "flow"]
+
+    def __init__(self, Id: Union[int, str], V: List[Vertex], A: List[Arc],
                  s: Union[int, str], t: Union[int, str], f: int = 0):
         """
         !! 𝑢 argument is not used since kinda dumb to write it specifically !!
@@ -384,24 +434,28 @@ class Network(Graph):
         self.connected_components = UnionFind([])
         self.node_levels: Dict[int, int] = None
 
-        self.direction: Optional[str] = None
-        self.acyclical: Optional[bool] = None
-        self.st_connected: Optional[bool] = None
+        self.is_acyclical: Optional[bool] = None
+        self.is_st_connected: Optional[bool] = None
+        self.direction: Optional[GraphDirection] = None
+        self.has_negative_weight: Optional[bool] = None
 
         self.init_vertices(V)
         self.init_arcs(A)
 
-        if s not in self.vertices.keys() or t not in self.vertices.keys() or s == t:
+        if s not in self.vertices.keys() or t not in self.vertices.keys():
+            # TODO maybe topologically sort the network and auto assign s and t
             raise ValueError("Source and sink nodes must be specified for a proper Network")
-
-        self.source_node_id = s
-        self.sink_node_id = t
-        self.flow = f
+        elif s==t:
+            raise ValueError("Source and sink nodes must be different from each other")
+        else:
+            self.source_node_id = s
+            self.sink_node_id = t
+            self.flow = f
 
         self.update_node_levels()
         self.update_meta()
 
-        if not self.st_connected:
+        if not self.is_st_connected:
             raise ValueError("Source and sink nodes must be connected")
 
     def refactor_antiparallel_arcs(self, A: List[Arc]) -> List[Arc]:
@@ -475,20 +529,29 @@ class Network(Graph):
                self.connected_components.find(self.sink_node_id)
 
     def update_meta(self) -> None:
+        self.is_acyclical = not self.is_cyclic()
+        self.is_st_connected = self.is_source_and_sink_connected()
         self.direction = self.get_graph_direction()
-        self.acyclical = not self.is_cyclic()
-        self.st_connected = self.is_source_and_sink_connected()
+        self.has_negative_weight = self.get_has_negative_weight()
 
     def initialize_flow(self) -> None:
         self.flow = 0
         for arc in self.edges.values():
             arc.set_flow(0)
+        for vertex in self.vertices.values():
+            vertex.set_excess_flow(0)
+
+    def augment_edge(self, u: int, v: int, f: float):
+        self.edges[(u, v)].alter_flow(f)
+        self.edges[(v, u)].alter_flow(-f)
+        
+        self.vertices[u].alter_excess_flow(-f)
+        self.vertices[v].alter_excess_flow(+f)
 
     def augment_along(self, P: List[Tuple[int, int]], f: float):
         self.flow += f
         for u, v in P:
-            self.edges[(u, v)].alter_flow(f)
-            self.edges[(v, u)].alter_flow(-f)
+            self.augment_edge(u, v, f)
 
     def copy(self):
         return Network(self.id,
@@ -499,7 +562,7 @@ class Network(Graph):
     def __str__(self):  # TODO
         graph_info = f"Metadata of Network{self.id}:\n" + (
             "acyclic network "
-            if self.acyclical
+            if self.is_acyclical
             else "network that possibly includes cycles "
         )
         return graph_info

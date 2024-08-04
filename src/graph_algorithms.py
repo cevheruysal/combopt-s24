@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from enums import (MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum,
+from enums import (MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum, MinFlowAlgorithmsEnum,
                    MinSpanningTreeAlgorithmsEnum)
 from graph_utils import (construct_path_to_node, delta,
                          minimum_cost_edge_in_delta)
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class UtilAlgorithms:
+    """
+    utility algorithms used throughout other algorithms 
+    """
     @staticmethod
     def topological_sort(G: Graph) -> Optional[List[int]]:
         if len(G.edges) == 0:
@@ -93,12 +96,63 @@ class UtilAlgorithms:
                 temp_flow = UtilAlgorithms.blocking_flow(N, leaf, curr_flow, start)
 
                 if temp_flow > 0:
-                    N.edges[(node, leaf)].alter_flow(temp_flow)
-                    N.edges[(leaf, node)].alter_flow(-temp_flow)
+                    N.augment_edge(node, leaf, temp_flow)
                     return temp_flow
 
             start[node] += 1
         return 0
+
+    @staticmethod
+    def push_relabel_init_flow(N: Network) -> None:
+        """
+        1 initialize 𝑓(e) := ⎧ 𝑢(𝑒), for 𝑒 ∈ 𝛿_out(𝑠)
+                             ⎨ 0,    for 𝑒 ∈ 𝐸(𝐺) ∖ 𝛿_out(𝑠) """
+
+        N.initialize_flow()
+        s = N.source_node_id
+        for v in N.vertices[s].leafs:
+            arc = N.edges[(s, v)]
+            N.augment_edge(s, v, arc.capacity)
+
+    @staticmethod
+    def push_relabel_init_phi(N: Network) -> Dict[int, int]:
+        """
+        2 initialize 𝜓(𝑣) ∶= ⎧ 𝑛,   for 𝑣 = 𝑠
+                             ⎨ 0,   for 𝑣 ∈ 𝑉(𝐺) ∖ {𝑠} """
+        
+        return {v:len(N.vertices) if v == N.source_node_id else 0 for v in N.vertices}
+
+    @staticmethod
+    def push(N: Network, v: int, w: int) -> None:
+        """
+        Push(𝑁, 𝑓, 𝑒)
+        input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢), a preflow 𝑓, an arc 𝑒 ∈ 𝐸(𝐺𝑓)
+        output: a new preflow 𝑓 in 𝑁
+        
+        1 let (𝑣, 𝑤) ∶= 𝑒
+        2 set 𝛾 ∶= min{ex_𝑓(𝑣), 𝑢_𝑓(𝑒)}
+        3 augment 𝑓 along 𝑒 by 𝛾
+        4 return 𝑓 """
+
+        gamma = min(N.vertices[v].excess_flow, 
+                    N.edges[(v, w)].remaining_capacity())
+        N.augment_edge(v, w, gamma)
+
+    @staticmethod
+    def relabel(N: Network, phi: Dict[int, int], v: int) -> None:
+        """
+        Relabel(𝑁, 𝑓, 𝜓, 𝑣)
+        input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢), a preflow 𝑓, a distance labeling 𝜓, a node 𝑣 ∈ 𝑉(𝐺)
+        output: a new distance labeling for 𝑁
+        1 Set 𝜓(𝑣) ∶= min{𝜓(𝑤) + 1 ∶ (𝑣, 𝑤) ∈ 𝛿^out_𝐺_𝑓 (𝑣)}
+        2 return 𝜓 """
+
+        min_distance = float('inf')
+        for w in N.vertices[v].leafs:
+            if N.edges[(v, w)].remaining_capacity() > 0:
+                min_distance = min(min_distance, phi[w])
+
+        phi[v] = min_distance + 1
 
 
 class MinDistanceAlgorithms:
@@ -107,43 +161,42 @@ class MinDistanceAlgorithms:
 
     def auto_run(self, start_vertex: int, goal_vertex: int) -> Optional[dict]:
         result = None
-        if self.graph.direction and self.graph.acyclical:
+        if self.graph.direction and self.graph.is_acyclical:
             logger.info("The graph is directed and acyclic, using Topological Sort to find minimum distance")
-            result = self.topological_sort_min_dist_algorithm(start_vertex)
+            result = self.topological_sort(start_vertex, goal_vertex)
         elif self.graph.direction and not self.graph.has_negative_weight:
             logger.info("The graph is directed and doesn't have negative weights, using Dijkstra's to find minimum distance")
-            result = self.dijkstras_min_dist_algorithm(start_vertex)
+            result = self.dijkstras(start_vertex, goal_vertex)
         elif self.graph.has_negative_weight:
             logger.info("The graph is either undirected or there is negative weighted edges, using Bellman-Ford's to find minimum distance")
-            result = self.bellman_fords_min_dist_algorithm(start_vertex)
+            result = self.bellman_fords(start_vertex, goal_vertex)
         else:
             logger.error("Automatic selection didn't run any minimum distance algorithm")
-        if result is None: 
-            logger.error("Automatic selection couldn't find any solutions") 
+        if result is None:
+            logger.error("Automatic selection couldn't find any solutions")
         return result
 
-    def run(self, 
+    def run(self,
             start_vertex:int, goal_vertex:int, 
-            use_algorithm:MinDistanceAlgorithmsEnum = MinDistanceAlgorithmsEnum.AUTOMATIC) -> Optional[dict]:
+            use_algorithm:MinDistanceAlgorithmsEnum = 0) -> Optional[dict]:
         result = None
 
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find minimum distance")
 
             match use_algorithm.value:
-                case 1: result = self.topological_sort_min_dist_algorithm(start_vertex)
-                case 2: result = self.dijkstras_min_dist_algorithm(start_vertex)
-                case 3: result = self.bellman_fords_min_dist_algorithm(start_vertex)
-                case 4: result = self.floyd_warshall_min_dist_algorithm(start_vertex)
-                case 5: result = self.a_star_min_dist_algorithm(start_vertex, goal_vertex)
+                case 1: result = self.topological_sort(start_vertex, goal_vertex)
+                case 2: result = self.dijkstras(start_vertex, goal_vertex)
+                case 3: result = self.bellman_fords(start_vertex, goal_vertex)
+                case 4: result = self.floyd_warshall(start_vertex, goal_vertex)
+                case 5: result = self.a_star(start_vertex, goal_vertex) # TODO add heuristic selection scheme
                 case _: logger.error("Algorithm doesn't exist returning no solution")
-        else: 
+        else:
             result = self.auto_run(start_vertex, goal_vertex)
 
         return result
 
-    def topological_sort_min_dist_algorithm(self, 
-                                            start_vertex: int) -> dict:
+    def topological_sort(self, start_vertex: int, goal_vertex:int = -1) -> dict:
         """
         Let 𝐺 be an acyclic directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑛 + 𝑚)"""
@@ -165,8 +218,7 @@ class MinDistanceAlgorithms:
         logger.info("Found solution using Topological Sort")
         return distances
 
-    def dijkstras_min_dist_algorithm(self, 
-                                     start_vertex: int) -> dict:
+    def dijkstras(self, start_vertex: int, goal_vertex:int = -1) -> dict:
         """
         Let 𝐺 be a directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q≥0 and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑚 + 𝑛 log 𝑛)"""
@@ -192,8 +244,7 @@ class MinDistanceAlgorithms:
         logger.info("Found solution using Dijkstra's")
         return distances
 
-    def bellman_fords_min_dist_algorithm(self, 
-                                         start_vertex: int) -> Optional[dict]:
+    def bellman_fords(self, start_vertex: int, goal_vertex:int = -1) -> Optional[dict]:
         """
         Let 𝐺 = (𝑉, 𝐸) be a directed graph with edge weights 𝑐 ∶ 𝐸 → Q and let 𝑠, 𝑡 ∈ 𝑉.
         There is an algorithm that either computes a shortest 𝑠-𝑡-path in 𝐺
@@ -217,8 +268,7 @@ class MinDistanceAlgorithms:
         logger.info("Found solution using Bellman Ford's")
         return distances
 
-    def floyd_warshall_min_dist_algorithm(self, 
-                                          start_vertex: int) -> Optional[dict]:
+    def floyd_warshall(self, start_vertex: int, goal_vertex:int = -1) -> Optional[dict]:
         v_size = len(self.graph.vertices)
         distance_matrix = np.ones([v_size, v_size]) * np.inf
         previous_vertex = np.array([-1] * (v_size**2)).reshape(v_size, v_size)
@@ -249,9 +299,7 @@ class MinDistanceAlgorithms:
             )
         }
 
-    def a_star_min_dist_algorithm(self, 
-                                  start_vertex:int, goal_vertex:int, 
-                                  heuristic) -> Optional[List[int]]:
+    def a_star(self, start_vertex:int, goal_vertex:int, heuristic) -> Optional[List[int]]:
         open_set = []
         heapq.heappush(open_set, (0, start_vertex))
         came_from = {start_vertex: None}
@@ -300,21 +348,20 @@ class MinSpanningTreeAlgorithms:
 
         self.graph = G
 
-    def run(self,
-            use_algorithm: MinSpanningTreeAlgorithmsEnum = MinSpanningTreeAlgorithmsEnum.KRUSKALS) -> Graph:
+    def run(self, use_algorithm: MinSpanningTreeAlgorithmsEnum = 2) -> Graph:
         result = None
 
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find minimum spanning tree")
-        
+
             match use_algorithm.value:
-                case 1: result = self.prims_min_spanning_tree_algorithm()
-                case 2: result = self.kruskals_min_spanning_tree_algorithm()
-                case _: logger.error("Algorithm doesn't exist returning no solution") 
-        
+                case 1: result = self.prims()
+                case 2: result = self.kruskals()
+                case _: logger.error("Algorithm doesn't exist returning no solution")
+
         return result
 
-    def prims_min_spanning_tree_algorithm(self):
+    def prims(self):
         """
         input : a graph 𝐺 = (𝑉, 𝐸), edge weights 𝑐 ∶ 𝐸 → Q≥0
         output: a minimum spanning tree 𝑇 = (𝑉, 𝐸_𝑇) in 𝐺
@@ -335,7 +382,7 @@ class MinSpanningTreeAlgorithms:
         while len(T.vertices) < len(self.graph.vertices):
             edge_list = self.graph.edges.values()
             from_vertices = T.vertices.keys()
-            to_vertices = [v for v in self.graph.vertices.keys() 
+            to_vertices = [v for v in self.graph.vertices.keys()
                            if v not in from_vertices]
 
             delta_edges = delta(edge_list, from_vertices, to_vertices)
@@ -348,7 +395,7 @@ class MinSpanningTreeAlgorithms:
 
         return T
 
-    def kruskals_min_spanning_tree_algorithm(self):
+    def kruskals(self):
         """
         input : a graph 𝐺 = (𝑉, 𝐸), edge weights 𝑐 ∶ 𝐸 → Q≥0
         output: a minimum spanning tree 𝑇 = (𝑉, 𝐸_𝑇) in 𝐺
@@ -402,22 +449,22 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
 
         super().__init__(N)
 
-    def run(self,
-            use_algorithm: MaxFlowAlgorithmsEnum = MaxFlowAlgorithmsEnum.EDMONDS_KARP) -> int:
+    def run(self, use_algorithm: MaxFlowAlgorithmsEnum = 2) -> Optional[int]:
         result = None
 
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find max flow / min cut")
-        
+
             match use_algorithm.value:
-                case 1: result = self.ford_fulkerson_max_flow_algorithm()
-                case 2: result = self.edmonds_karp_max_flow_algorithm()
-                case 3: result = self.dinics_max_flow_algorithm()
-                case _: logger.error("Algorithm doesn't exist returning no solution") 
-        
+                case 1: result = self.ford_fulkerson()
+                case 2: result = self.edmonds_karp()
+                case 3: result = self.dinics()
+                case 4: result = self.push_relabel()
+                case _: logger.error("Algorithm doesn't exist returning no solution")
+
         return result
 
-    def ford_fulkerson_max_flow_algorithm(self) -> float:
+    def ford_fulkerson(self) -> float:
         """
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) with positive arc capacities 𝑢 ∶ 𝐸(𝐺) → Q>0
         output: an 𝑠-𝑡-flow of maximum value in 𝑁
@@ -441,7 +488,7 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         logger.info(f"Found maximum flow in {augmentation_count} augmentation iterations using Ford-Fulkerson: {self.network.flow}")
         return self.network.flow
 
-    def edmonds_karp_max_flow_algorithm(self) -> float:
+    def edmonds_karp(self) -> float:
         """
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) with positive arc capacities 𝑢 ∶ 𝐸(𝐺) → Q>0
         output: an 𝑠-𝑡-flow of maximum value in 𝑁
@@ -469,7 +516,7 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         logger.info(f"Found maximum flow in {augmentation_count} augmentation iterations using Edmonds-Karp: {self.network.flow}")
         return self.network.flow
 
-    def dinics_max_flow_algorithm(self) -> int:
+    def dinics(self) -> int:
         """
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
         output: a maximum 𝑠-𝑡 flow 𝑓 in 𝑁
@@ -499,5 +546,85 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
                 self.network.flow += flow 
 
         logger.info(f"Found maximum flow using Dinic's algorithm: {self.network.flow}")
-
         return self.network.flow
+
+    def push_relabel(self) -> int:
+        """
+        input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
+        output: a maximum 𝑠-𝑡 flow 𝑓 in 𝑁
+
+        1 initialize 𝑓(e) := ⎧ 𝑢(𝑒), for 𝑒 ∈ 𝛿_out(𝑠)
+                             ⎨ 0,    for 𝑒 ∈ 𝐸(𝐺) ∖ 𝛿_out(𝑠)
+        
+        2 initialize 𝜓(𝑣) ∶= ⎧ 𝑛,   for 𝑣 = 𝑠
+                             ⎨ 0,   for 𝑣 ∈ 𝑉(𝐺) ∖ {𝑠}
+        
+        3 while there exists an active node 𝑣 with ex_𝑓(𝑣) > 0 do
+            4 select an active node 𝑣 such that 𝜓(𝑣) = max{𝜓(𝑤) ∶ 𝑤 ∈ 𝑉(𝐺), 𝑤 is active}
+            5 if there exists an admissible edge 𝑒 ∈ 𝛿^out_𝐺_𝑓 (𝑣) then
+                6 Push(𝑁, 𝑓, 𝑒)
+            7 else
+                8 Relabel(𝑁, 𝑓, 𝜓, 𝑣)
+        9 return 𝑓 """
+
+        UtilAlgorithms.push_relabel_init_flow(self.network)
+        phi:Dict[int, int] = UtilAlgorithms.push_relabel_init_phi(self.network)
+
+        active_nodes = [v for v in self.network.vertices.values()
+                        if v.id != self.network.source_node_id
+                       and v.id != self.network.sink_node_id
+                       and v.excess_flow > 0]
+
+        while active_nodes:
+            pushed = False
+            node = max(active_nodes, key=lambda x: phi[x.id])
+            
+            for w in node.leafs:
+                if (self.network.edges[(node.id, w)].remaining_capacity() > 0 and 
+                    phi[node.id] == phi[w] + 1):
+                    
+                    pushed = True
+                    UtilAlgorithms.push(self.network, node.id, w)
+
+                    if node.excess_flow == 0: active_nodes.remove(node)
+                    leaf = self.network.vertices[w]
+                    if (leaf.id != self.network.source_node_id
+                        and leaf.id != self.network.sink_node_id
+                        and leaf.excess_flow > 0 
+                        and leaf not in active_nodes): 
+                        active_nodes.append(leaf)
+                    break
+
+            if not pushed:
+                UtilAlgorithms.relabel(self.network, phi, node.id)
+
+        self.network.flow = self.network.vertices[self.network.sink_node_id].excess_flow
+
+        logger.info(f"Found maximum flow using Push-Relabel algorithm: {self.network.flow}")
+        return self.network.flow
+
+
+class MinFlowAlgorithms(NetworkFlowAlgorithms):
+    def __init__(self, N: Network):
+        """
+         """
+
+        super().__init__(N)
+
+    def run(self, use_algorithm: MinFlowAlgorithmsEnum = 0) -> int:
+        result = None
+
+        if use_algorithm.value > 0:
+            logger.info(f"Trying to use {use_algorithm.name} to find min flow")
+
+            match use_algorithm.value:
+                case 1: result = None
+                case _: logger.error("Algorithm doesn't exist returning no solution")
+
+        return result
+
+    def minimum_mean_cycle_cancelling(self):
+        pass
+
+    def successive_shortest_path(self):
+        pass

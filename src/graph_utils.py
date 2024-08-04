@@ -58,6 +58,9 @@ def delta(Edges: Union[List[Edge], List[Arc]],
     V_from_diff, V_to_diff = V_from_set.difference(V_to_set), V_to_set.difference(V_from_set)
 
     for e in Edges:
+        if isinstance(e, Arc) and e.residual_arc: 
+            continue
+        
         (v1, v2) = e.incident_vertex_ids
         v1_contained_from = v1 in V_from_diff
         v2_contained_from = v2 in V_from_diff
@@ -68,16 +71,16 @@ def delta(Edges: Union[List[Edge], List[Arc]],
         if v1_contained_from and not v2_contained_from:
             if v2_contained_to:
                 if e.direction is EdgeDirection.DIRECTED:
-                    delta_edges["out"].add(e.copy())
+                    delta_edges["out"].add(e)
                 else:
-                    delta_edges["un-bi"].add(e.copy())
+                    delta_edges["un-bi"].add(e)
 
         if not v1_contained_from and v2_contained_from:
             if v1_contained_to:
                 if e.direction is EdgeDirection.DIRECTED:
-                    delta_edges["in"].add(e.copy())
+                    delta_edges["in"].add(e)
                 else:
-                    delta_edges["un-bi"].add(e.copy())
+                    delta_edges["un-bi"].add(e)
 
     return delta_edges
 

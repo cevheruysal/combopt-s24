@@ -232,7 +232,7 @@ class TestGraph(unittest.TestCase):
         g = Graph(1, V, E=[e1, e2, e3, e4, e5, e6, e7, e8])
         isCyclic = g.is_cyclic()
         self.assertFalse(isCyclic)
-        self.assertEqual(isCyclic, not g.acyclical)
+        self.assertEqual(isCyclic, not g.is_acyclical)
 
     def test_graph_copy(self):
         v1, v2 = Vertex(1), Vertex(2)
@@ -299,7 +299,7 @@ class TestNetwork(unittest.TestCase):
         a = Arc(1, 1, 2, 10.0, 5.0)
         n = Network(1, [v1, v2], [a], 1, 2)
         self.assertEqual(n.id, 1)
-        self.assertTrue(n.st_connected)
+        self.assertTrue(n.is_st_connected)
 
     def test_network_residual_arcs(self):
         v1, v2, v3 = Vertex(1), Vertex(2), Vertex(3)

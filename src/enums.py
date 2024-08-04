@@ -33,3 +33,10 @@ class MaxFlowAlgorithmsEnum(Enum):
     FORD_FULKERSON = 1
     EDMONDS_KARP = 2
     DINICS = 3
+    PUSH_RELABEL = 4
+
+
+class MinFlowAlgorithmsEnum(Enum):
+    AUTOMATIC = 0
+    MINIMUM_MEAN_CYCLE_CANCELLING = 1
+    SUCCESSIVE_SHORTEST_PATH = 2
