@@ -10,7 +10,7 @@ from enums import (MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum, MinFlowAlgo
                    MinSpanningTreeAlgorithmsEnum)
 from graph_utils import (construct_path_to_node, delta,
                          minimum_cost_edge_in_delta)
-from notation import Graph, Network, Tree, Vertex
+from notation import Edge, Graph, Network, Tree, Vertex
 from util_structs import UnionFind
 
 logging.basicConfig(
@@ -154,6 +154,9 @@ class UtilAlgorithms:
 
         phi[v] = min_distance + 1
 
+    @staticmethod
+    def find_negative_cycle(G: Graph) -> Optional[List[Edge]]:
+        pass
 
 class MinDistanceAlgorithms:
     def __init__(self, G: Graph):
@@ -618,13 +621,41 @@ class MinFlowAlgorithms(NetworkFlowAlgorithms):
             logger.info(f"Trying to use {use_algorithm.name} to find min flow")
 
             match use_algorithm.value:
-                case 1: result = None
+                case 1: result = self.minimum_mean_cycle_cancelling()
+                case 2: result = self.successive_shortest_path()
                 case _: logger.error("Algorithm doesn't exist returning no solution")
 
         return result
 
     def minimum_mean_cycle_cancelling(self):
-        pass
+        while True:
+            cycle = UtilAlgorithms.find_negative_cycle(self.network)
+            if cycle is None: break
+            min_capacity = min(self.network.edges[edge].remaining_capacity() for edge in cycle)
+            self.network.augment_along(cycle, min_capacity)
+
+        return sum(arc.flow * arc.weight for arc in self.network.edges.values())
 
     def successive_shortest_path(self):
-        pass
+        while True:
+            pred = MinDistanceAlgorithms.dijkstras(self.network, 
+                                                   self.network.source_node_id, 
+                                                   self.network.sink_node_id)
+            if pred[self.network.sink_node_id] is None:
+                break
+
+            v = self.network.sink_node_id
+            min_capacity = float('inf')
+            while pred[v] is not None:
+                u = pred[v]
+                min_capacity = min(min_capacity, self.network.edges[(u, v)].remaining_capacity())
+                v = u
+
+            v = self.network.sink_node_id
+            while pred[v] is not None:
+                u = pred[v]
+                self.network.augment_edge(u, v, min_capacity)
+                v = u
+
+        return sum(arc.flow for arc in self.network.edges.values() 
+                   if arc.incident_vertex_ids[0] == self.network.source_node_id)
