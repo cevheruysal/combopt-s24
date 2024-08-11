@@ -2,7 +2,7 @@ import heapq
 import logging
 from collections import deque
 from random import choice
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -320,10 +320,29 @@ class UtilAlgorithms:
                 x_star = x
 
         return F.construct_path_to_node(s_id, x_star), min_mu
+    
+    @staticmethod
+    def select_st_nodes(N:Network) -> Optional[Tuple[int, int, VertexProp]]:
+        s, t = None, None
+        
+        for u in N.vertices.values():
+            if u.lack_flow() > 0:
+                s = u
+                break
+        
+        minDistInstance = MinDistanceAlgorithms(N, s)
+        prop = minDistInstance.dijkstras(True)
+
+        for v in N.vertices.values():
+            if v.excess_flow() > 0 and prop.get_dist(v) < float("inf"):
+                t = v
+                break
+
+        return s, t, prop
 
 
 class MinDistanceAlgorithms:
-    def __init__(self, G:Graph, S:int, T:int,
+    def __init__(self, G:Graph, S:int, T:int = -1,
                  H:Callable[[int, int], float] = lambda x, y: 1):
         self.graph = G
         self.start_vertex = S
@@ -365,7 +384,8 @@ class MinDistanceAlgorithms:
 
         return result
 
-    def topological_sort(self) -> Tuple[float, List[Tuple[int, int]]]:
+    def topological_sort(self, give_full_result=False
+                         ) -> Union[Tuple[float, List[Tuple[int, int]]], VertexProp]:
         """
         Let 𝐺 be an acyclic directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑛 + 𝑚)"""
@@ -385,11 +405,13 @@ class MinDistanceAlgorithms:
                     prop.set_prev(leaf, v_id)
 
         logger.info("Found solution using Topological Sort")
+        if give_full_result: return prop
         return (prop.get_dist(self.end_vertex),
                 prop.construct_path_to_node(self.start_vertex, 
                                             self.end_vertex))
 
-    def dijkstras(self) -> Tuple[float, List[Tuple[int, int]]]:
+    def dijkstras(self, give_full_result=False
+                  ) -> Union[Tuple[float, List[Tuple[int, int]]], VertexProp]:
         """
         Let 𝐺 be a directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q≥0 and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑚 + 𝑛 log 𝑛)"""
@@ -414,11 +436,13 @@ class MinDistanceAlgorithms:
                     heapq.heappush(heap, (cand_dist_to_leaf, leaf))
 
         logger.info("Found solution using Dijkstra's")
+        if give_full_result: return prop
         return (prop.get_dist(self.end_vertex),
                 prop.construct_path_to_node(self.start_vertex, 
                                             self.end_vertex))
 
-    def bellman_fords(self) -> Optional[Tuple[float, List[Tuple[int, int]]]:]:
+    def bellman_fords(self, give_full_result=False
+                      ) -> Optional[Union[Tuple[float, List[Tuple[int, int]]], VertexProp]]:
         """
         Let 𝐺 = (𝑉, 𝐸) be a directed graph with edge weights 𝑐 ∶ 𝐸 → Q and let 𝑠, 𝑡 ∈ 𝑉.
         There is an algorithm that either computes a shortest 𝑠-𝑡-path in 𝐺
@@ -444,11 +468,13 @@ class MinDistanceAlgorithms:
                 return None
 
         logger.info("Found solution using Bellman Ford's")
+        if give_full_result: return prop
         return (prop.get_dist(self.end_vertex),
                 prop.construct_path_to_node(self.start_vertex, 
                                             self.end_vertex))
     
-    def floyd_warshall(self) -> Tuple[float, List[Tuple[int, int]]]:
+    def floyd_warshall(self, give_full_result=False
+                       ) -> Union[Tuple[float, List[Tuple[int, int]]], VertexProp]:
         props = {v: VertexProp(self.graph.vertices.keys()) for v in self.graph.vertices}
 
         for (v1_id, v2_id), e in self.graph.edges.items():
@@ -466,6 +492,7 @@ class MinDistanceAlgorithms:
                         props[i].set_dist(j, props[i].get_dist(k) + props[k].get_dist(j))
                         props[i].set_prev(j, props[k].get_prev(j))
 
+        if give_full_result: return props
         return (props[self.start_vertex].get_dist(self.end_vertex),
                 props[self.start_vertex].construct_path_to_node(self.start_vertex, 
                                                                 self.end_vertex))
@@ -508,7 +535,8 @@ class MinDistanceAlgorithms:
         
         return min_distance, path"""
 
-    def a_star(self) -> Optional[List[int]]:
+    def a_star(self
+               ) -> Optional[List[int]]:
         open_set = []
         heapq.heappush(open_set, (0, self.start_vertex))
         came_from = {self.start_vertex: None}
@@ -842,35 +870,42 @@ class MinCostFlowAlgorithms():
             cycle, mu = UtilAlgorithms.min_mean_cycle(self.network)
             if cycle is None: break
             min_capacity = min(self.network.edges[edge].remaining_capacity() for edge in cycle)
-            self.network.augment_along(cycle, min_capacity)
+            self.network.augment_along(cycle, min_capacity, False)
 
         logger.info(f"Found minimum cost flow with {self.network.get_flow_cost()} cost\n"
                     + f"using Minimum-Mean-Cycle-Cancelling: {self.network.flow}")
         return self.network.get_flow_cost()
 
     def successive_shortest_path(self):
+        """
+        input : a minimum cost flow instance 𝑁 = (𝐺, 𝑢, 𝑐, 𝑏) with integral 𝑢 and 𝑏
+        output: a minimum cost 𝑏-flow for the given instance
+        1 initialize 𝑓 = 0 and ̂𝑏 = 0
+        2 while ̂𝑏 ≠ 𝑏 do
+            3 choose a vertex 𝑠 ∈ 𝑉 with 𝑏(𝑠) > ̂𝑏(𝑠)
+            4 choose a vertex 𝑡 ∈ 𝑉 with 𝑏(𝑡) < ̂𝑏(𝑡) that is reachable from 𝑠 in 𝐺_𝑓
+            5 if no such vertex 𝑡 exists then
+                6 STOP, there is no feasible 𝑏-flow
+            7 compute a minimum-cost 𝑠-𝑡-path 𝑃 in 𝐺_𝑓 and set 𝛾 ∶= min{𝑢_𝑓(𝑒) ∶ 𝑒 ∈ 𝐸(𝑃)}
+            8 if 𝛾 > 𝑏(𝑠) − ̂𝑏(𝑠) then
+                9 set 𝛾 = 𝑏(𝑠) − ̂𝑏(𝑠)
+            10 if 𝛾 > −𝑏(𝑡) + ̂𝑏(𝑡) then
+                11 set 𝛾 = −𝑏(𝑡) + ̂𝑏(𝑡)
+            12 augment 𝑓 along 𝑃 by 𝛾
+            13 set ̂𝑏(𝑠) = ̂𝑏(𝑠) + 𝛾 and ̂𝑏(𝑡) = ̂𝑡(𝑠) − 𝛾
+        14 return 𝑓 """
+
         while True:
-            pred = MinDistanceAlgorithms.dijkstras(self.network, 
-                                                   self.network.source_node_id, 
-                                                   self.network.sink_node_id)
-            if pred[self.network.sink_node_id] is None:
-                break
+            logger.info(f"Current flow cost: {self.network.get_flow_cost()}")
+            u, v, prop = UtilAlgorithms.select_st_nodes(self.network)
+            if v is None: break
+            path = prop.construct_path_to_node(u, v)
+            min_remaining = min([self.network.edges[arc].remaining_capacity() for arc in path])
+            self.network.augment_along(path, min_remaining, False)
 
-            v = self.network.sink_node_id
-            min_capacity = float('inf')
-            while pred[v] is not None:
-                u = pred[v]
-                min_capacity = min(min_capacity, self.network.edges[(u, v)].remaining_capacity())
-                v = u
-
-            v = self.network.sink_node_id
-            while pred[v] is not None:
-                u = pred[v]
-                self.network.augment_edge(u, v, min_capacity)
-                v = u
-
-        return sum(arc.flow for arc in self.network.edges.values() 
-                   if arc.incident_vertex_ids[0] == self.network.source_node_id)
+        logger.info(f"Found minimum cost flow with {self.network.get_flow_cost()} cost\n"
+                    + f"using Successive Shortest Path: {self.network.flow}")
+        return self.network.get_flow_cost()
 
 
 class LinearOptimizationAlgorithms:

@@ -50,8 +50,8 @@ class UnionFind:
 
 class VertexPropItem:
     __slots__ = ["dist", "prev", "in_deg", "level", "comp"]
-    def __init__(self, 
-                 d:float = float("inf"), p:Optional[int] = None):
+    def __init__(self, d:float = float("inf"), 
+                       p:Optional[int] = None):
         self.dist = d
         self.prev = p
 

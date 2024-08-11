@@ -35,6 +35,9 @@ class Vertex:
     def excess_flow(self) -> float:
         return max(self.flow - self.charge, 0.0)
     
+    def lack_flow(self) -> float:
+        return max(self.charge - self.flow, 0.0)
+    
     def set_flow(self, value: float) -> None:
         self.flow = value
 
