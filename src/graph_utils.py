@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 from config import RANDOM_SEED
 from enums import EdgeDirection
 from notation import Arc, Edge, Graph, Network, Vertex
+from util_structs import VertexProp
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -110,11 +111,3 @@ def minimum_cost_edge_in_delta(delta_edges: Dict[str, Set[Edge]]) -> Optional[Ed
                 min_weight = min_edge.weight
 
     return min_edge
-
-
-def construct_path_to_node(parent: Dict[int, int], node: int) -> List[Tuple[int, int]]:
-    path = []
-    while parent[node] != -1:
-        path.insert(0, (parent[node], node))
-        node = parent[node]
-    return path

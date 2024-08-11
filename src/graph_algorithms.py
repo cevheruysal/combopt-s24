@@ -2,16 +2,16 @@ import heapq
 import logging
 from collections import deque
 from random import choice
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from enums import (MaxFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum, MinFlowAlgorithmsEnum,
+from enums import (GraphDirection, MaxFlowAlgorithmsEnum,
+                   MinDistanceAlgorithmsEnum, MinFlowAlgorithmsEnum,
                    MinSpanningTreeAlgorithmsEnum)
-from graph_utils import (construct_path_to_node, delta,
-                         minimum_cost_edge_in_delta)
-from notation import Edge, Graph, Network, Tree, Vertex
-from util_structs import UnionFind
+from graph_utils import (delta, minimum_cost_edge_in_delta)
+from notation import Edge, Graph, LinearProgram, Network, Tree, Vertex
+from util_structs import VertexProp, UnionFind
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -26,7 +26,7 @@ class UtilAlgorithms:
     utility algorithms used throughout other algorithms 
     """
     @staticmethod
-    def topological_sort(G: Graph) -> Optional[List[int]]:
+    def order_topologically(G:Graph) -> Optional[List[int]]:
         if len(G.edges) == 0:
             logger.warning("No edges present to perform topological sorting")
             return None
@@ -51,59 +51,104 @@ class UtilAlgorithms:
             "Topological sorting finished, no possible sorting found. The graph may have cycles."
         )
         return None
-
+    
     @staticmethod
-    def find_st_path(N: Network) -> Optional[Tuple[List[Tuple[int, int]], float]]:
-        parent_dict = {v: -1 for v in N.vertices.keys()}
+    def find_uv_path(N: Network, 
+                     init_vertex: int, end_vertex: int, 
+                     init_flow: float = float("inf"),
+                     leveled: bool = False) -> Tuple[Optional[List[Tuple[int, int]]], float]:
+    
+        v_prop = VertexProp(N.vertices.keys())
+        stack = [(init_vertex, None, init_flow)]
         visited = set()
-        queue = deque([(N.source_node_id, float("inf"))])
 
-        while queue:
-            current, flow = queue.popleft()
-            if current in visited:
-                continue
-            visited.add(current)
+        while stack:
+            node, prev, flow = stack.pop()
 
-            for neighbor in N.vertices[current].leafs:
-                arc = N.edges[(current, neighbor)]
+            if node in visited: continue
+            visited.add(node)
+            v_prop.set_prev(node, prev)
 
-                if neighbor not in visited and arc.remaining_capacity() > 0:
+            if node == end_vertex:
+                path = v_prop.construct_path_to_node(init_vertex, end_vertex)
+                logger.info(f"Found augmenting path: {path} with flow {flow}")
+                return path, flow
+
+            arcs = [N.edges[(node, leaf)] for leaf in N.vertices[node].leafs]
+            arcs.sort(key=lambda arc: arc.remaining_capacity())
+
+            for arc in arcs:
+                _, leaf = arc.incident_vertex_ids
+                
+                if leaf not in visited and arc.remaining_capacity() > 0:
+                    if leveled and N.node_levels[leaf] != N.node_levels[node] + 1:
+                        continue
                     new_flow = min(flow, arc.remaining_capacity())
-                    parent_dict[neighbor] = current
-
-                    if neighbor == N.sink_node_id:
-                        path = construct_path_to_node(parent_dict, N.sink_node_id)
-                        logger.info(f"Found augmenting path:{path} with flow {new_flow}")
-                        return path, new_flow
-
-                    queue.appendleft((neighbor, new_flow))
+                    stack.append((leaf, node, new_flow))
+                    
         return None, 0
 
     @staticmethod
-    def blocking_flow(N: Network, node: int, flow: int, start: Dict[int, int]) -> int:
-        if node == N.sink_node_id:
-            return flow
+    def find_st_path(N:Network) -> Optional[Tuple[List[Tuple[int, int]], float]]:
+        return UtilAlgorithms.find_uv_path(N, N.source_node_id, N.sink_node_id)
+    
+    @staticmethod
+    def min_throughput_node(N:Network) -> Tuple[Optional[int], float]:
+        res_node: Optional[int] = None
+        min_throughput: float = float('inf')
+        
+        for node in N.vertices:
+            if (node == N.source_node_id or node == N.sink_node_id 
+                or N.node_levels[node] == -1): 
+                continue
+            
+            throughput_out, throughput_in = 0.0, 0.0
 
-        for leaf in N.vertices[node].leafs:
-            # while start[node] < len(N.vertices[node].leafs):
-            #     leaf = N.vertices[node].leafs[start[node]]
+            for arc in N.edges.values():
+                if arc.residual_arc: continue
+                u,v = arc.incident_vertex_ids
+                if u == node: throughput_out += arc.remaining_capacity()
+                elif v == node: throughput_in += arc.remaining_capacity()
+                
+            node_throughput = min(throughput_out, throughput_in)
+            if node_throughput > 0 and node_throughput < min_throughput:
+                min_throughput = node_throughput
+                res_node = node
 
-            if (
-                N.node_levels[leaf] == N.node_levels[node] + 1
-                and N.edges[(node, leaf)].remaining_capacity() > 0
-            ):
-                curr_flow = min(flow, N.edges[(node, leaf)].remaining_capacity())
-                temp_flow = UtilAlgorithms.blocking_flow(N, leaf, curr_flow, start)
-
-                if temp_flow > 0:
-                    N.augment_edge(node, leaf, temp_flow)
-                    return temp_flow
-
-            start[node] += 1
-        return 0
+        return res_node, min_throughput
 
     @staticmethod
-    def push_relabel_init_flow(N: Network) -> None:
+    def push_pull_flow(N:Network, node:int, flow:int, direction:str) -> float:
+        total_pushed = 0
+        while flow > 0:
+            if direction == "pull":           
+                path, path_flow = UtilAlgorithms.find_uv_path(N, N.source_node_id, node, 
+                                                              flow, leveled=True)
+            elif direction == "push":
+                path, path_flow = UtilAlgorithms.find_uv_path(N, node, N.sink_node_id, 
+                                                              flow, leveled=True)
+            else: ValueError("Wrong direction specified!")
+
+            if path is None or path_flow == 0: break
+
+            N.augment_along(path, path_flow, False)
+            flow -= path_flow
+            total_pushed += path_flow
+
+        return total_pushed
+
+    @staticmethod
+    def blocking_flow(N:Network, node:int, throughput:int) -> int:
+        pulled_flow = UtilAlgorithms.push_pull_flow(N, node, throughput, "pull")
+        pushed_flow = UtilAlgorithms.push_pull_flow(N, node, pulled_flow, "push")
+
+        if pulled_flow > pushed_flow:
+            logger.error(f"Throughput flow not completely pushed, the result might be incorrect")
+        
+        return pushed_flow
+
+    @staticmethod
+    def push_relabel_init_flow(N:Network) -> None:
         """
         1 initialize 𝑓(e) := ⎧ 𝑢(𝑒), for 𝑒 ∈ 𝛿_out(𝑠)
                              ⎨ 0,    for 𝑒 ∈ 𝐸(𝐺) ∖ 𝛿_out(𝑠) """
@@ -115,7 +160,7 @@ class UtilAlgorithms:
             N.augment_edge(s, v, arc.capacity)
 
     @staticmethod
-    def push_relabel_init_phi(N: Network) -> Dict[int, int]:
+    def push_relabel_init_phi(N:Network) -> Dict[int, int]:
         """
         2 initialize 𝜓(𝑣) ∶= ⎧ 𝑛,   for 𝑣 = 𝑠
                              ⎨ 0,   for 𝑣 ∈ 𝑉(𝐺) ∖ {𝑠} """
@@ -123,7 +168,7 @@ class UtilAlgorithms:
         return {v:len(N.vertices) if v == N.source_node_id else 0 for v in N.vertices}
 
     @staticmethod
-    def push(N: Network, v: int, w: int) -> None:
+    def push(N:Network, v:int, w:int) -> None:
         """
         Push(𝑁, 𝑓, 𝑒)
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢), a preflow 𝑓, an arc 𝑒 ∈ 𝐸(𝐺𝑓)
@@ -139,7 +184,7 @@ class UtilAlgorithms:
         N.augment_edge(v, w, gamma)
 
     @staticmethod
-    def relabel(N: Network, phi: Dict[int, int], v: int) -> None:
+    def relabel(N:Network, phi:Dict[int, int], v:int) -> None:
         """
         Relabel(𝑁, 𝑓, 𝜓, 𝑣)
         input : a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢), a preflow 𝑓, a distance labeling 𝜓, a node 𝑣 ∈ 𝑉(𝐺)
@@ -154,166 +199,234 @@ class UtilAlgorithms:
 
         phi[v] = min_distance + 1
 
+    def find_negative_cycle_dfs(G:Graph, 
+                                parent:int, v:int, 
+                                path_cost:float, 
+                                current_path:List[Edge]) -> Optional[List[Edge]]:
+        for leaf in G.vertices[v].leafs:
+            edge = G.edges[(v, leaf)]
+            path_cost += edge.weight
+            current_path.append(edge)
+                
+            if leaf == parent and path_cost < 0:
+                return current_path
+            else:
+                result = UtilAlgorithms.find_negative_cycle_dfs(G, parent, leaf, path_cost, current_path)
+                if result is not None:
+                    return None
+
     @staticmethod
-    def find_negative_cycle(G: Graph) -> Optional[List[Edge]]:
-        pass
+    def find_negative_cycle(G:Graph) -> Optional[List[Edge]]:
+        if not G.has_negative_weight: return None
+
+        negative_weighted_edges = [e for e in G.edges.values() if e.weight < 0]
+        negative_weighted_edges.sort(key=lambda e: e.weight)
+        for edge in negative_weighted_edges:
+            u, v = edge.incident_vertex_ids
+            cost, path = UtilAlgorithms.find_negative_cycle_dfs(G, u, v, edge.weight, [edge])
+            if path is not None:
+                return path
+        return None
+
 
 class MinDistanceAlgorithms:
-    def __init__(self, G: Graph):
+    def __init__(self, G:Graph, S:int, T:int,
+                 H:Callable[[int, int], float] = lambda x, y: 1):
         self.graph = G
+        self.start_vertex = S
+        self.end_vertex = T
+        self.heuristic = H
 
-    def auto_run(self, start_vertex: int, goal_vertex: int) -> Optional[dict]:
+    def auto_run(self) -> Optional[dict]:
         result = None
-        if self.graph.direction and self.graph.is_acyclical:
+        if self.graph.direction is GraphDirection.DIRECTED and self.graph.is_acyclical:
             logger.info("The graph is directed and acyclic, using Topological Sort to find minimum distance")
-            result = self.topological_sort(start_vertex, goal_vertex)
-        elif self.graph.direction and not self.graph.has_negative_weight:
+            result = self.topological_sort()
+        elif self.graph.direction is GraphDirection.DIRECTED and not self.graph.has_negative_weight:
             logger.info("The graph is directed and doesn't have negative weights, using Dijkstra's to find minimum distance")
-            result = self.dijkstras(start_vertex, goal_vertex)
+            result = self.dijkstras()
         elif self.graph.has_negative_weight:
             logger.info("The graph is either undirected or there is negative weighted edges, using Bellman-Ford's to find minimum distance")
-            result = self.bellman_fords(start_vertex, goal_vertex)
+            result = self.bellman_fords()
         else:
             logger.error("Automatic selection didn't run any minimum distance algorithm")
         if result is None:
             logger.error("Automatic selection couldn't find any solutions")
         return result
 
-    def run(self,
-            start_vertex:int, goal_vertex:int, 
-            use_algorithm:MinDistanceAlgorithmsEnum = 0) -> Optional[dict]:
+    def run(self, use_algorithm:MinDistanceAlgorithmsEnum = 0) -> Optional[dict]:
         result = None
 
         if use_algorithm.value > 0:
             logger.info(f"Trying to use {use_algorithm.name} to find minimum distance")
 
             match use_algorithm.value:
-                case 1: result = self.topological_sort(start_vertex, goal_vertex)
-                case 2: result = self.dijkstras(start_vertex, goal_vertex)
-                case 3: result = self.bellman_fords(start_vertex, goal_vertex)
-                case 4: result = self.floyd_warshall(start_vertex, goal_vertex)
-                case 5: result = self.a_star(start_vertex, goal_vertex) # TODO add heuristic selection scheme
+                case 1: result = self.topological_sort()
+                case 2: result = self.dijkstras()
+                case 3: result = self.bellman_fords()
+                case 4: result = self.floyd_warshall()
+                case 5: result = self.a_star() # TODO add heuristic selection scheme
                 case _: logger.error("Algorithm doesn't exist returning no solution")
         else:
-            result = self.auto_run(start_vertex, goal_vertex)
+            result = self.auto_run()
 
         return result
 
-    def topological_sort(self, start_vertex: int, goal_vertex:int = -1) -> dict:
+    def topological_sort(self) -> Tuple[float, List[Tuple[int, int]]]:
         """
         Let 𝐺 be an acyclic directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑛 + 𝑚)"""
 
-        distances = {v.id: float("inf") for v in self.graph.vertices.values()}
-        distances[start_vertex] = 0
+        prop = VertexProp(self.graph.vertices.keys(),
+                          self.start_vertex)
 
-        for vertex_id in UtilAlgorithms.topological_sort(self.graph):
-            if distances[vertex_id] == float("inf"):
-                continue
+        for v_id in UtilAlgorithms.order_topologically(self.graph):
+            if prop.get_dist(v_id) == float("inf"): continue
 
-            for neighbor in self.graph.vertices[vertex_id].leafs:
-                edge = self.graph.edges[(vertex_id, neighbor)]
-                new_distance = distances[vertex_id] + edge.weight
+            for leaf in self.graph.vertices[v_id].leafs:
+                edge = self.graph.edges[(v_id, leaf)]
+                cand_dist_to_leaf = prop.get_dist(v_id) + edge.weight
 
-                if new_distance < distances[neighbor]:
-                    distances[neighbor] = new_distance
+                if cand_dist_to_leaf < prop.get_dist(leaf):
+                    prop.set_dist(leaf, cand_dist_to_leaf)
+                    prop.set_prev(leaf, v_id)
 
         logger.info("Found solution using Topological Sort")
-        return distances
+        return (prop.get_dist(self.end_vertex),
+                prop.construct_path_to_node(self.start_vertex, 
+                                            self.end_vertex))
 
-    def dijkstras(self, start_vertex: int, goal_vertex:int = -1) -> dict:
+    def dijkstras(self) -> Tuple[float, List[Tuple[int, int]]]:
         """
         Let 𝐺 be a directed graph with edge weights 𝑐 ∶ 𝐸(𝐺) → Q≥0 and let 𝑠, 𝑡 ∈ 𝑉(𝐺).
         Then we can compute a shortest 𝑠-𝑡-path in 𝐺 in time 𝒪 (𝑚 + 𝑛 log 𝑛)"""
 
-        distances = {v.id: float("inf") for v in self.graph.vertices.values()}
-        distances[start_vertex] = 0
-        heap = [(0, start_vertex)]
+        prop = VertexProp(self.graph.vertices.keys(),
+                          self.start_vertex)
+        
+        heap = [(0, self.start_vertex)]
         heapq.heapify(heap)
 
         while heap:
-            current_distance, current_vertex = heapq.heappop(heap)
-            if current_distance > distances[current_vertex]:
-                continue
+            popped_dist, popped_v_id = heapq.heappop(heap)
 
-            for neighbor in self.graph.vertices[current_vertex].leafs:
-                edge = self.graph.edges[(current_vertex, neighbor)]
-                distance = current_distance + edge.weight
+            for leaf in self.graph.vertices[popped_v_id].leafs:
+                edge = self.graph.edges[(popped_v_id, leaf)]
+                cand_dist_to_leaf = popped_dist + edge.weight
 
-                if distance < distances[neighbor]:
-                    distances[neighbor] = distance
-                    heapq.heappush(heap, (distance, neighbor))
+                if cand_dist_to_leaf < prop.get_dist(leaf):
+                    prop.set_dist(leaf, cand_dist_to_leaf)
+                    prop.set_prev(leaf, popped_v_id)
+                    
+                    heapq.heappush(heap, (cand_dist_to_leaf, leaf))
 
         logger.info("Found solution using Dijkstra's")
-        return distances
+        return (prop.get_dist(self.end_vertex),
+                prop.construct_path_to_node(self.start_vertex, 
+                                            self.end_vertex))
 
-    def bellman_fords(self, start_vertex: int, goal_vertex:int = -1) -> Optional[dict]:
+    def bellman_fords(self) -> Optional[Tuple[float, List[Tuple[int, int]]]:]:
         """
         Let 𝐺 = (𝑉, 𝐸) be a directed graph with edge weights 𝑐 ∶ 𝐸 → Q and let 𝑠, 𝑡 ∈ 𝑉.
         There is an algorithm that either computes a shortest 𝑠-𝑡-path in 𝐺
         or finds a negative cycle in 𝐺 in time 𝒪 (𝑚𝑛)"""
 
-        distances = {v.id: float("inf") for v in self.graph.vertices.values()}
-        distances[start_vertex] = 0
+        prop = VertexProp(self.graph.vertices.keys(),
+                          self.start_vertex)
 
+        # for every possible k step path starting from s compute dist 0<k<n
         for _ in range(len(self.graph.vertices) - 1):
             for edge in self.graph.edges.values():
                 u, v = edge.incident_vertex_ids
-                distances[v] = min(distances[u] + edge.weight, distances[v])
+                cand_dist_to_v = prop.get_dist(u) + edge.weight
+                if cand_dist_to_v < prop.get_dist(v):
+                    prop.set_dist(v, cand_dist_to_v)
+                    prop.set_prev(v, u)
 
-        # Check for negative weight cycles
+        # if a dist to any vertex decreases when we perform the nth step return cycle!
         for edge in self.graph.edges.values():
             u, v = edge.incident_vertex_ids
-            if distances[u] + edge.weight < distances[v]:
+            if prop.get_dist(u) + edge.weight < prop.get_dist(v):
                 logger.info("Graph contains a negative weight cycle")
                 return None
 
         logger.info("Found solution using Bellman Ford's")
-        return distances
-
-    def floyd_warshall(self, start_vertex: int, goal_vertex:int = -1) -> Optional[dict]:
-        v_size = len(self.graph.vertices)
-        distance_matrix = np.ones([v_size, v_size]) * np.inf
-        previous_vertex = np.array([-1] * (v_size**2)).reshape(v_size, v_size)
+        return (prop.get_dist(self.end_vertex),
+                prop.construct_path_to_node(self.start_vertex, 
+                                            self.end_vertex))
+    
+    def floyd_warshall(self) -> Tuple[float, List[Tuple[int, int]]]:
+        props = {v: VertexProp(self.graph.vertices.keys()) for v in self.graph.vertices}
 
         for (v1_id, v2_id), e in self.graph.edges.items():
+            props[v1_id].set_dist(v2_id, e.weight)
+            props[v1_id].set_prev(v2_id, v1_id)
+
+        for v_id in self.graph.vertices:
+            props[v_id].set_dist(v_id, 0)
+            props[v_id].set_prev(v_id, v_id)
+
+        for k in self.graph.vertices:
+            for i in self.graph.vertices:
+                for j in self.graph.vertices:
+                    if props[i].get_dist(j) > props[i].get_dist(k) + props[k].get_dist(j):
+                        props[i].set_dist(j, props[i].get_dist(k) + props[k].get_dist(j))
+                        props[i].set_prev(j, props[k].get_prev(j))
+
+        return (props[self.start_vertex].get_dist(self.end_vertex),
+                props[self.start_vertex].construct_path_to_node(self.start_vertex, 
+                                                                self.end_vertex))
+
+    """def floyd_warshall(self) -> Tuple[float, List[int]]:
+        v_size = len(self.graph.vertices)
+        distance_matrix = np.full((v_size, v_size), np.inf)
+        np.fill_diagonal(distance_matrix, 0)
+        previous_vertex = np.full((v_size, v_size), -1)
+        
+        for (v1_id, v2_id), e in self.graph.edges.items():
             distance_matrix[v1_id - 1, v2_id - 1] = e.weight
-            previous_vertex[v1_id - 1, v2_id - 1] = v1_id
-        for id, v in self.graph.vertices.items():
-            distance_matrix[id - 1, id - 1] = 0
-            previous_vertex[id - 1, id - 1] = id
-
+            previous_vertex[v1_id - 1, v2_id - 1] = v1_id - 1
+        
         for k in range(v_size):
-            for i in range(v_size):
-                for j in range(v_size):
-                    if (
-                        distance_matrix[i, j]
-                        > distance_matrix[i, k] + distance_matrix[k, j]
-                    ):
-                        distance_matrix[i, j] = (
-                            distance_matrix[i, k] + distance_matrix[k, j]
-                        )
-                        previous_vertex[i, j] = previous_vertex[k, j]
+            i_k_dist = distance_matrix[:, k].reshape(-1, 1)
+            k_j_dist = distance_matrix[k, :].reshape(1, -1)
+            new_dist = i_k_dist + k_j_dist
+            
+            mask = distance_matrix > new_dist
+            distance_matrix[mask] = new_dist[mask]
+            previous_vertex[mask] = previous_vertex[k, mask.argmax(axis=0)]
+        
+        start_idx = self.start_vertex - 1
+        end_idx = self.end_vertex - 1
+        min_distance = distance_matrix[self.start_vertex - 1, 
+                                       self.end_vertex - 1]
+        
+        path = []
+        if np.isfinite(min_distance):
+            current_vertex = end_idx
+            while current_vertex != start_idx:
+                path.append((previous_vertex[start_idx, current_vertex], 
+                             current_vertex + 1))
+                current_vertex = previous_vertex[start_idx, current_vertex]
+                if current_vertex == -1:
+                    path = []
+                    break
+            path.reverse()
+        
+        return min_distance, path"""
 
-        return {
-            id: min_dist
-            for id, min_dist in zip(
-                self.graph.vertices.keys(), distance_matrix[start_vertex - 1, :]
-            )
-        }
-
-    def a_star(self, start_vertex:int, goal_vertex:int, heuristic) -> Optional[List[int]]:
+    def a_star(self) -> Optional[List[int]]:
         open_set = []
-        heapq.heappush(open_set, (0, start_vertex))
-        came_from = {start_vertex: None}
-        g_score = {v.id: float("inf") for v in self.graph.vertices.values()}
-        g_score[start_vertex] = 0
-        f_score = {v.id: float("inf") for v in self.graph.vertices.values()}
-        f_score[start_vertex] = heuristic(start_vertex, goal_vertex)
+        heapq.heappush(open_set, (0, self.start_vertex))
+        came_from = {self.start_vertex: None}
+        g_score = {v: 0 if v == self.start_vertex 
+                        else float("inf") for v in self.graph.vertices}
+        f_score = {v: self.heuristic(self.start_vertex, self.end_vertex) if v == self.start_vertex 
+                        else float("inf") for v in self.graph.vertices}
 
         while open_set:
             _, current = heapq.heappop(open_set)
-            if current == goal_vertex:
+            if current == self.end_vertex:
                 path = []
                 while current is not None:
                     path.append(current)
@@ -327,13 +440,13 @@ class MinDistanceAlgorithms:
                 if tentative_g_score < g_score[neighbor]:
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = g_score[neighbor] + heuristic(neighbor, goal_vertex)
+                    f_score[neighbor] = g_score[neighbor] + self.heuristic(neighbor, self.end_vertex)
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
         return None
 
 
 class MinSpanningTreeAlgorithms:
-    def __init__(self, G: Graph):
+    def __init__(self, G:Graph):
         """
         Input: an undirected, connected graph 𝐺 = (𝑉, 𝐸) with edge weights 𝑐 ∶ 𝐸 → Q.
         Task: Find a spanning tree 𝑇 in 𝐺 such that 𝑐(𝐸(𝑇)) = ∑_{𝑒∈𝐸(𝑇)} 𝑐(𝑒) is minimized
@@ -351,7 +464,7 @@ class MinSpanningTreeAlgorithms:
 
         self.graph = G
 
-    def run(self, use_algorithm: MinSpanningTreeAlgorithmsEnum = 2) -> Graph:
+    def run(self, use_algorithm:MinSpanningTreeAlgorithmsEnum = 2) -> Graph:
         result = None
 
         if use_algorithm.value > 0:
@@ -382,7 +495,7 @@ class MinSpanningTreeAlgorithms:
         v_0 = choice(tuple(self.graph.vertices.values()))
         T = Tree(Id="MST_Prims", V=[Vertex(v_0.id)], E=[])
 
-        while len(T.vertices) < len(self.graph.vertices):
+        while True:
             edge_list = self.graph.edges.values()
             from_vertices = T.vertices.keys()
             to_vertices = [v for v in self.graph.vertices.keys()
@@ -417,7 +530,7 @@ class MinSpanningTreeAlgorithms:
         edge_heap = [e.copy() for e in self.graph.edges.values()]
         heapq.heapify(edge_heap)
 
-        while len(edge_heap) > 0:
+        while edge_heap:
             e = heapq.heappop(edge_heap)
             v1, v2 = e.incident_vertex_ids
 
@@ -431,16 +544,8 @@ class MinSpanningTreeAlgorithms:
         return T
 
 
-class NetworkFlowAlgorithms:
-    def __init__(self, N: Network):
-        self.network = N
-
-    def run(self) -> Graph:
-        pass
-
-
-class MaxFlowAlgorithms(NetworkFlowAlgorithms):
-    def __init__(self, N: Network):
+class MaxFlowAlgorithms():
+    def __init__(self, N:Network):
         """
         Input: a network 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢)
         Task: compute an 𝑠-𝑡-flow 𝑓 in 𝑁 of maximum value
@@ -450,9 +555,10 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         Let 𝑁 = (𝐺, 𝑠, 𝑡, 𝑢) be a network, then the value of a maximum 𝑠-𝑡-flow
         is equal to the capacity of a minimum (𝑠, 𝑡)-cut in 𝑁"""
 
-        super().__init__(N)
+        self.network = N
 
-    def run(self, use_algorithm: MaxFlowAlgorithmsEnum = 2) -> Optional[int]:
+
+    def run(self, use_algorithm:MaxFlowAlgorithmsEnum = 2) -> Optional[int]:
         result = None
 
         if use_algorithm.value > 0:
@@ -540,13 +646,11 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         self.network.initialize_flow()
 
         while self.network.update_node_levels():
-            start = {v: 0 for v in self.network.vertices}
-            while True:
-                flow = UtilAlgorithms.blocking_flow(self.network, 
-                                                    self.network.source_node_id, 
-                                                    float('inf'), start)
-                if flow == 0: break
-                self.network.flow += flow 
+            node, throughput = UtilAlgorithms.min_throughput_node(self.network)
+            if node is None: break
+            flow = UtilAlgorithms.blocking_flow(self.network, node, throughput)
+            if flow == 0: break
+            self.network.flow += flow
 
         logger.info(f"Found maximum flow using Dinic's algorithm: {self.network.flow}")
         return self.network.flow
@@ -594,8 +698,9 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
                     if (leaf.id != self.network.source_node_id
                         and leaf.id != self.network.sink_node_id
                         and leaf.excess_flow > 0 
-                        and leaf not in active_nodes): 
+                        and leaf not in active_nodes):
                         active_nodes.append(leaf)
+                        
                     break
 
             if not pushed:
@@ -607,14 +712,14 @@ class MaxFlowAlgorithms(NetworkFlowAlgorithms):
         return self.network.flow
 
 
-class MinFlowAlgorithms(NetworkFlowAlgorithms):
-    def __init__(self, N: Network):
+class MinFlowAlgorithms():
+    def __init__(self, N:Network):
         """
          """
 
-        super().__init__(N)
+        self.network = N
 
-    def run(self, use_algorithm: MinFlowAlgorithmsEnum = 0) -> int:
+    def run(self, use_algorithm:MinFlowAlgorithmsEnum = 0) -> int:
         result = None
 
         if use_algorithm.value > 0:
@@ -659,3 +764,105 @@ class MinFlowAlgorithms(NetworkFlowAlgorithms):
 
         return sum(arc.flow for arc in self.network.edges.values() 
                    if arc.incident_vertex_ids[0] == self.network.source_node_id)
+
+
+class LinearOptimizationAlgorithms:
+    def __init__(self, lp, tol=1e-6, max_iter=1_000_000):
+        self.lp: LinearProgram = lp
+        self.tol: float = tol
+        self.max_iter: int = max_iter
+
+    def ellipsoid_method(self):
+        n = len(self.lp.c)
+        x = np.zeros(n)
+        Q = np.eye(n) * 100
+        for _ in range(self.max_iter):
+            if np.dot(self.lp.c, x) - np.dot(self.lp.c, self.lp.b) < self.tol:
+                return x
+            violated_constraint_index = np.argmax(np.dot(self.lp.A, x) - self.lp.b)
+            a = self.lp.A[violated_constraint_index]
+            alpha = np.dot(a, x) - self.lp.b[violated_constraint_index]
+            if alpha <= 0:
+                return x
+            a_norm = np.linalg.norm(a)
+            x = x - (alpha / a_norm**2) * np.dot(Q, a)
+            Q = (n**2 / (n**2 - 1)) * (Q - (2 / (n + 1)) * np.outer(np.dot(Q, a), np.dot(Q, a)) / np.dot(a, np.dot(Q, a)))
+        return x
+
+    def simplex_method(self):
+        c = self.lp.c
+        A = self.lp.A
+        b = self.lp.b
+        
+        # Initialize basic and non-basic variables
+        m, n = A.shape
+        basic = list(range(n, n + m))
+        non_basic = list(range(n))
+        
+        # Create the initial tableau
+        tableau = np.hstack([A, np.eye(m), b.reshape(-1, 1)])
+        tableau = np.vstack([np.hstack([c, np.zeros(m + 1)]), tableau])
+        
+        while True:
+            # Check for optimality
+            if all(tableau[0, :-1] >= 0):
+                solution = np.zeros(n)
+                solution[basic] = tableau[1:, -1]
+                return solution
+            
+            # Determine entering variable (most negative cost coefficient)
+            entering = np.argmin(tableau[0, :-1])
+            
+            # Determine leaving variable
+            ratios = tableau[1:, -1] / tableau[1:, entering]
+            ratios[tableau[1:, entering] <= 0] = np.inf
+            leaving = np.argmin(ratios) + 1
+            
+            # Pivot
+            pivot = tableau[leaving, entering]
+            tableau[leaving, :] /= pivot
+            for i in range(tableau.shape[0]):
+                if i != leaving:
+                    tableau[i, :] -= tableau[i, entering] * tableau[leaving, :]
+            
+            # Update basic and non-basic variables
+            basic[leaving - 1], non_basic[entering] = non_basic[entering], basic[leaving - 1]
+
+    def interior_point_method(self):
+        A = self.lp.A
+        b = self.lp.b
+        c = self.lp.c
+        
+        # Initialize x, s, and lambda
+        n = len(c)
+        x = np.ones(n)
+        s = np.ones(len(b))
+        lmbda = np.ones(len(b))
+        
+        def F(x, s, lmbda):
+            return np.hstack([A.T @ lmbda - c,
+                              A @ x - s - b,
+                              np.diag(s) @ np.diag(lmbda) @ np.ones(len(b))])
+        
+        for _ in range(self.max_iter):
+            r = F(x, s, lmbda)
+            if np.linalg.norm(r) < self.tol:
+                return x
+            
+            # Solve the linear system using a basic Newton method
+            J = np.block([[np.zeros((n, n)), np.zeros((n, len(b))), A.T],
+                          [A, -np.eye(len(b)), np.zeros((len(b), len(b)))],
+                          [np.zeros((len(b), n)), np.diag(lmbda), np.diag(s)]])
+            
+            delta = np.linalg.solve(J, -r)
+            dx = delta[:n]
+            ds = delta[n:n+len(b)]
+            dlmbda = delta[n+len(b):]
+            
+            # Update variables with a step size
+            step_size = min(1, 0.9 * min(-s[ds < 0] / ds[ds < 0], -lmbda[dlmbda < 0] / dlmbda[dlmbda < 0], default=1))
+            x += step_size * dx
+            s += step_size * ds
+            lmbda += step_size * dlmbda
+        
+        return x

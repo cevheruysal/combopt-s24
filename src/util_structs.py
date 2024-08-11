@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 
 class UnionFind:
@@ -47,3 +47,45 @@ class UnionFind:
             else:
                 self.parent[root2] = root1
                 self.rank[root1] += 1
+
+class VertexPropItem:
+    __slots__ = ["dist", "prev", "in_deg", "level", "comp"]
+    def __init__(self, 
+                 d:float = float("inf"), p:Optional[int] = None):
+        self.dist = d
+        self.prev = p
+
+class VertexProp:
+    __slots__ = ["vertices"]
+    def __init__(self, V:List[int], S:int = -1):
+        self.vertices:Dict[int, VertexPropItem] = {v: VertexPropItem(d=0) if v == S 
+                                                   else VertexPropItem() for v in V}
+    
+    def get_dist(self, v:int) -> float:
+        if v not in self.vertices:
+            return KeyError("Cannot get distance of index, key is not found")
+        return self.vertices[v].dist
+    
+    def get_prev(self, v:int) -> int:
+        if v not in self.vertices:
+            return KeyError("Cannot get the previous, key is not found")
+        return self.vertices[v].prev
+    
+    def set_dist(self, v:int, d:float) -> None:
+        if v not in self.vertices:
+            return KeyError("Cannot set distance of index, key is not found")
+        self.vertices[v].dist = d
+
+    def set_prev(self, v:int, p:int) -> None:
+        if v not in self.vertices:
+            return KeyError("Cannot set the previous index, key is not found")
+        self.vertices[v].prev = p
+        
+    def construct_path_to_node(self, S:int, T:int) -> List[Tuple[int, int]]:
+        path = []
+        node1, node2 = S, T
+
+        while node2 != node1:
+            path.insert(0, (self.vertices[node2].prev, node2))
+            node2 = self.vertices[node2].prev
+        return path

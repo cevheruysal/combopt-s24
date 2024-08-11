@@ -28,7 +28,7 @@ class TestUtilAlgorithms(unittest.TestCase):
         self.g = Graph(1, V, E=[e1, e2, e3, e4, e5, e6, e7, e8])
 
     def test_topological_sort(self):
-        order = UtilAlgorithms.topological_sort(self.g)
+        order = UtilAlgorithms.order_topologically(self.g)
         self.assertEqual(order, [1, 2, 3, 4, 5])
 
 
@@ -48,33 +48,46 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
             [self.v1, self.v2, self.v3, self.v4],
             [self.e1, self.e2, self.e3, self.e4],
         )
-        self.algorithms = MinDistanceAlgorithms(self.g)
+        self.algorithms = MinDistanceAlgorithms(self.g, 1, 4)
+
+        self.nce = [Edge(1, 1, 2, 1, EdgeDirection.DIRECTED),
+                    Edge(2, 2, 3, -1, EdgeDirection.DIRECTED),
+                    Edge(3, 3, 4, -1, EdgeDirection.DIRECTED),
+                    Edge(4, 4, 2, -1, EdgeDirection.DIRECTED),
+                    Edge(5, 3, 5, 1, EdgeDirection.DIRECTED),
+                    Edge(6, 4, 5, 1, EdgeDirection.DIRECTED)]
+        self.ncg = Graph(2, [], self.nce)
+        self.algorithms2 = MinDistanceAlgorithms(self.ncg, 1, 4)
 
     def test_topological_sort_min_dist_algorithm(self):
-        result = self.algorithms.topological_sort(1)
-        expected = {1: 0, 2: 1, 3: 2, 4: 3}
+        result = self.algorithms.topological_sort()
+        expected = (3, [(1, 2), (2, 3), (3, 4)])
         self.assertEqual(result, expected)
 
     def test_dijkstras_min_dist_algorithm(self):
-        result = self.algorithms.dijkstras(1)
-        expected = {1: 0, 2: 1, 3: 2, 4: 3}
+        result = self.algorithms.dijkstras()
+        expected = (3, [(1, 2), (2, 3), (3, 4)])
         self.assertEqual(result, expected)
 
     def test_bellman_fords_min_dist_algorithm(self):
-        result = self.algorithms.bellman_fords(1)
-        expected = {1: 0, 2: 1, 3: 2, 4: 3}
+        result = self.algorithms.bellman_fords()
+        expected = (3, [(1, 2), (2, 3), (3, 4)])
         self.assertEqual(result, expected)
 
+    def test_bellman_fords_with_negative_cyclic_graph(self):
+        result = self.algorithms2.bellman_fords()
+        self.assertEqual(result, None)
+
     def test_floyd_warshall_min_dist_algorithm(self):
-        result = self.algorithms.floyd_warshall(1)
-        expected = {1: 0, 2: 1, 3: 2, 4: 3}
+        result = self.algorithms.floyd_warshall()
+        expected = (3, [(1, 2), (2, 3), (3, 4)])
         self.assertEqual(result, expected)
 
     def test_a_star_min_dist_algorithm(self):
         def heuristic(a, b):
             return 1  # Dummy heuristic for testing
 
-        result = self.algorithms.a_star(1, 4, heuristic)
+        result = self.algorithms.a_star()
         expected = [1, 2, 3, 4]
         self.assertEqual(result, expected)
 
@@ -82,26 +95,26 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
     @patch.object(MinDistanceAlgorithms, "dijkstras")
     @patch.object(MinDistanceAlgorithms, "bellman_fords")
     def test_run(self, mock_bellman, mock_dijkstra, mock_topo):
-        mock_topo.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
-        mock_dijkstra.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
-        mock_bellman.return_value = {1: 0, 2: 1, 3: 2, 4: 3}
+        mock_topo.return_value = (3, [(1, 2), (2, 3), (3, 4)])
+        mock_dijkstra.return_value = (3, [(1, 2), (2, 3), (3, 4)])
+        mock_bellman.return_value = (3, [(1, 2), (2, 3), (3, 4)])
 
         self.g.direction = True
         self.g.is_acyclical = True
-        result = self.algorithms.run(1, 4, MinDistanceAlgorithmsEnum.TOPOLOGICAL_SORT)
+        result = self.algorithms.run(MinDistanceAlgorithmsEnum.TOPOLOGICAL_SORT)
         mock_topo.assert_called_once()
-        self.assertEqual(result, {1: 0, 2: 1, 3: 2, 4: 3})
+        self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))
 
         self.g.direction = True
         self.g.has_negative_weight = False
-        result = self.algorithms.run(1, 4, MinDistanceAlgorithmsEnum.DIJKSTRA)
+        result = self.algorithms.run(MinDistanceAlgorithmsEnum.DIJKSTRA)
         mock_dijkstra.assert_called_once()
-        self.assertEqual(result, {1: 0, 2: 1, 3: 2, 4: 3})
+        self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))
 
         self.g.has_negative_weight = True
-        result = self.algorithms.run(1, 4, MinDistanceAlgorithmsEnum.BELLMAN_FORD)
+        result = self.algorithms.run(MinDistanceAlgorithmsEnum.BELLMAN_FORD)
         mock_bellman.assert_called_once()
-        self.assertEqual(result, {1: 0, 2: 1, 3: 2, 4: 3})
+        self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))
 
 
 class TestMinSpanningTreeAlgorithms(unittest.TestCase):

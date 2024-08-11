@@ -1,6 +1,9 @@
 import logging
+import random as r
 from collections import deque
 from typing import Dict, List, Optional, Set, Tuple, Union
+
+import numpy as np
 
 from config import ROUND_TO
 from enums import EdgeDirection, GraphDirection
@@ -258,7 +261,8 @@ class Graph:
 
     def init_edges(self, E: Union[List[Edge], List[Arc]]) -> None:
         constant = len(self.vertices)
-        E.sort(key=lambda e: e.sort_key(constant))
+        # E.sort(key=lambda e: e.sort_key(constant))
+        E.sort(key=lambda e: r.randint(0, len(E)))
         for e in E: self.add_edge(e)
 
     def is_cyclic_dfs(self, 
@@ -508,8 +512,7 @@ class Network(Graph):
         if self.node_levels is None:
             self.node_levels = {v: -1 for v in self.vertices}
         else:
-            for v in self.vertices:
-                self.node_levels[v] = -1
+            for v in self.vertices: self.node_levels[v] = -1
 
         self.node_levels[self.source_node_id] = 0
         queue = deque([self.source_node_id])
@@ -518,8 +521,12 @@ class Network(Graph):
             u = queue.popleft()
             for v in self.vertices[u].leafs:
                 arc = self.edges[(u, v)]
-                if self.node_levels[v] < 0 and arc.remaining_capacity() > 0:
-                    self.node_levels[v] = self.node_levels[u] + 1
+                if arc.remaining_capacity() > 0:
+                    if self.node_levels[v] == -1:
+                        self.node_levels[v] = self.node_levels[u] + 1
+                    else:
+                        self.node_levels[v] = min(self.node_levels[u] + 1, 
+                                                  self.node_levels[v])
                     queue.append(v)
 
         return self.node_levels[self.sink_node_id] != -1
@@ -548,8 +555,8 @@ class Network(Graph):
         self.vertices[u].alter_excess_flow(-f)
         self.vertices[v].alter_excess_flow(+f)
 
-    def augment_along(self, P: List[Tuple[int, int]], f: float):
-        self.flow += f
+    def augment_along(self, P: List[Tuple[int, int]], f: float, st_path = True):
+        if st_path: self.flow += f
         for u, v in P:
             self.augment_edge(u, v, f)
 
@@ -566,3 +573,26 @@ class Network(Graph):
             else "network that possibly includes cycles "
         )
         return graph_info
+    
+
+class LPVariable:
+    pass
+
+class ContinousVariable(LPVariable):
+    def __init__(self, lower_bound: float = 0.0, 
+                       upper_bound: float = float("inf")):
+        pass
+
+class IntegerVariable(LPVariable):
+    def __init__(self, lower_bound: int = 0.0, 
+                       upper_bound: int = 1000000.0):
+        pass
+
+class LinearProgram:
+    def __init__(self, c, A, b):
+        self.c = np.array(c)
+        self.A = np.array(A)
+        self.b = np.array(b)
+
+    def __repr__(self):
+        return f"Linear Program: Minimize {self.c}^T x subject to {self.A}x <= {self.b}, x >= 0"
