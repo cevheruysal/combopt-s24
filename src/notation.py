@@ -591,6 +591,9 @@ class Network(Graph):
         for u, v in P:
             self.augment_edge(u, v, f)
 
+    def is_current_b_flow_feasible(self):
+        return all([v.excess_flow() == v.lack_flow() for v in self.vertices.values()])
+
     def get_flow_cost(self):
         return sum(arc.flow * arc.weight for arc in self.edges.values())
 

@@ -896,7 +896,8 @@ class MinCostFlowAlgorithms():
         14 return 𝑓 """
 
         while True:
-            logger.info(f"Current flow cost: {self.network.get_flow_cost()}")
+            logger.info(f"Current flow cost: {self.network.get_flow_cost()}; Is b-flow feasible: 
+                        {self.network.is_current_b_flow_feasible()}")
             u, v, prop = UtilAlgorithms.select_st_nodes(self.network)
             if v is None: break
             path = prop.construct_path_to_node(u, v)
