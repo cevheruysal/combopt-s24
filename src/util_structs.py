@@ -86,6 +86,47 @@ class VertexProp:
         node1, node2 = S, T
 
         while node2 != node1:
-            path.insert(0, (self.vertices[node2].prev, node2))
-            node2 = self.vertices[node2].prev
+            path.insert(0, (self.get_prev(node2), node2))
+            node2 = self.get_prev(node2)
+        return path
+    
+
+class FCostProp:
+    __slots__ = ["steps_vertices"]
+    def __init__(self, V:List[int], S:int):
+        self.steps_vertices: List[Dict[int, VertexPropItem]] = [{v: VertexPropItem() for v in V} 
+                                                                                    for k in V]
+        self.steps_vertices[0][S].dist = 0
+
+    def get_score(self, k:int, v:int) -> float:
+        if v not in self.steps_vertices[k]:
+            return KeyError("Cannot get distance of index, key is not found")
+        return self.steps_vertices[k][v].dist
+    
+    def get_prev(self, k:int, v:int) -> int:
+        if v not in self.steps_vertices[k]:
+            return KeyError("Cannot get the previous, key is not found")
+        return self.steps_vertices[k][v].prev
+    
+    def set_score(self, k:int, v:int, d:float) -> None:
+        if v not in self.steps_vertices[k]:
+            return KeyError("Cannot set distance of index, key is not found")
+        self.steps_vertices[k][v].dist = d
+
+    def set_prev(self, k:int, v:int, p:int) -> None:
+        if v not in self.steps_vertices[k]:
+            return KeyError("Cannot set the previous index, key is not found")
+        self.steps_vertices[k][v].prev = p
+
+    def get_mu(self, k:int, x:int) -> float:
+        n = len(self.steps_vertices)
+        return (self.get_score(n, x) - self.get_score(k, x)) / (n - k)
+        
+    def construct_path_to_node(self, S:int, T:int) -> List[Tuple[int, int]]:
+        path = []
+        node1, node2 = S, T
+
+        while node2 != node1:
+            path.insert(0, (self.get_prev(node2), node2))
+            node2 = self.get_prev(node2)
         return path

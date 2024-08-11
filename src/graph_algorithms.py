@@ -11,7 +11,7 @@ from enums import (GraphDirection, MaxFlowAlgorithmsEnum,
                    MinSpanningTreeAlgorithmsEnum)
 from graph_utils import delta, minimum_cost_edge_in_delta
 from notation import Arc, Edge, Graph, LinearProgram, Network, Tree, Vertex
-from util_structs import UnionFind, VertexProp
+from util_structs import FCostProp, UnionFind, VertexProp
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -240,14 +240,14 @@ class UtilAlgorithms:
         for id, vertex in N.vertices.items():
             if id == s_id or id == t_id: continue
             if vertex.charge > 0:
-                N.add_edge(Arc(edge_id, s_id, id, U=vertex.charge, R=False)); edge_id += 1
+                N.add_edge(Arc(edge_id, s_id, id, U=vertex.charge)); edge_id += 1
                 N.add_edge(Arc(edge_id, id, s_id, R=True)); edge_id += 1
             
                 added_edges.add((s_id, id))
                 added_edges.add((id, s_id))
             
             elif vertex.charge < 0:
-                N.add_edge(Arc(edge_id, id, t_id, U=-vertex.charge, R=False)); edge_id += 1
+                N.add_edge(Arc(edge_id, id, t_id, U=-vertex.charge)); edge_id += 1
                 N.add_edge(Arc(edge_id, t_id, id, R=True)); edge_id += 1
 
                 added_edges.add((t_id, id))
@@ -272,73 +272,54 @@ class UtilAlgorithms:
         output: a minimum mean cycle 𝐶∗ of mean cost 𝜇(𝐺) in 𝐺
         1 add a node 𝑠 to 𝐺
         2 add edges (𝑠, 𝑥) with cost 𝑐(𝑠, 𝑥) = 0 for all 𝑥 ∈ 𝑉
-        3 set 𝐹_0(𝑠) = 0 and _𝐹0(𝑥) = ∞ for all 𝑥 ∈ 𝑉
+        3 set 𝐹_0(𝑠) = 0 and 𝐹_0(𝑥) = ∞ for all 𝑥 ∈ 𝑉
         4 for 𝑘 = 1, … , 𝑛 do
             5 for 𝑥 ∈ 𝑉 do
-                6 set _𝐹𝑘(𝑥) = ∞
+                6 set 𝐹_𝑘(𝑥) = ∞
                 7 for (𝑤, 𝑥) ∈ 𝛿^in(𝑥) do
-                    8 if _𝐹𝑘−1(𝑤) + 𝑐(𝑤, 𝑥) <_ 𝐹𝑘(𝑥) then
-                    9 set _𝐹𝑘(𝑥) = _𝐹𝑘−1(𝑤) + 𝑐(𝑤, 𝑥)
-        10 if _𝐹𝑛(𝑥) = ∞ for all 𝑥 ∈ 𝑉 then
+                    8 if 𝐹_𝑘−1(𝑤) + 𝑐(𝑤, 𝑥) < 𝐹_𝑘(𝑥) then
+                    9 set 𝐹_𝑘(𝑥) = 𝐹_𝑘−1(𝑤) + 𝑐(𝑤, 𝑥)
+        10 if 𝐹_𝑛(𝑥) = ∞ for all 𝑥 ∈ 𝑉 then
             11 terminate, 𝐺 is acyclic
-        12 compute  𝜇(𝐺) = mi n𝑥∈𝑉 max_{𝐹𝑛(𝑥) _− 𝐹𝑘( 𝑥)𝑛 −  𝑘∶ 0 ≤ 𝑘 ≤ 𝑛 − 1 ∶_ 𝐹𝑘(𝑥) < 
-                     ∞}𝑥∗ = arg min𝑥∈𝑉 m_ax{𝐹𝑛(𝑥_) − 𝐹𝑘( 𝑥) 𝑛 − 𝑘∶ 0 ≤ 𝑘 ≤ 𝑛 − _1 ∶ 𝐹𝑘(𝑥) < ∞}
-        13 let 𝐶∗ be the cycle on the edge progression corresponding to _𝐹𝑛(𝑥∗)
+        12 compute  𝜇(𝐺) = min 𝑥∈𝑉 max{ ( 𝐹_𝑛(𝑥) − 𝐹_𝑘(𝑥) ) / (𝑛 − 𝑘) ∶ 0 ≤ 𝑘 ≤ 𝑛 − 1 ∶ 𝐹_𝑘(𝑥) < ∞}
+                    𝑥∗ = argmin 𝑥∈𝑉 max{ ( 𝐹_𝑛(𝑥) − 𝐹_𝑘(𝑥) ) / (𝑛 − 𝑘) ∶ 0 ≤ 𝑘 ≤ 𝑛 − 1 ∶ 𝐹_𝑘(𝑥) < ∞}
+        13 let 𝐶∗ be the cycle on the edge progression corresponding to 𝐹_𝑛(𝑥∗)
         14 return 𝐶∗ """
 
-        # Step 1: Add a node s to G
-        s = len(graph)
-        graph[s] = {x: 0 for x in range(len(graph))}
+        edge_id = max((a.id for a in N.edges.values())) + 1
+        s_id = max((v for v in N.vertices)) + 1
+        n = len(N.vertices)
 
-        n = len(graph)
-        
-        # Step 3: Initialize F_0
-        F = [[math.inf] * n for _ in range(n + 1)]
-        F[0][s] = 0
+        for id, vertex in N.vertices.items():
+            if id == s_id: continue
+            N.add_edge(Arc(edge_id, s_id, id, U=vertex.charge, W=0.0)); edge_id += 1
+            N.add_edge(Arc(edge_id, id, s_id, R=True, W=0.0)); edge_id += 1
 
-        # Step 4: For k = 1, ..., n
+        F = FCostProp(N.vertices.keys(), s_id)
+
         for k in range(1, n + 1):
-            # Step 5: For each x in V
-            for x in range(n):
-                F[k][x] = math.inf
-                # Step 7: For each (w, x) in δ^in(x)
-                for w in range(n):
-                    if w in graph and x in graph[w]:
-                        # Step 8: Update F_k(x)
-                        if F[k-1][w] + graph[w][x] < F[k][x]:
-                            F[k][x] = F[k-1][w] + graph[w][x]
+            for x in N.vertices:
+                for w in N.vertices[x].roots:
+                    arc = N.edges[(w, x)]
+                    if F.get_score(k, x) > F.get_score(k-1, w) + arc.weight and arc.remaining_capacity() > 0:
+                        F.set_score(k, x, F.get_score(k-1, w) + arc.weight)
+                        F.set_prev(k, x, w)
 
-        # Step 10: Check if G is acyclic
-        if all(F[n][x] == math.inf for x in range(n)):
+        if all(F.get_score(n, x) == float("inf") for x in range(n)):
             return None  # G is acyclic
 
-        # Step 12: Compute μ(G) and find x*
-        min_mu = math.inf
+        min_mu = float("inf")
         x_star = None
-        for x in range(n):
-            max_mu_x = -math.inf
+        for x in N.vertices:
+            max_mu_x = float("-inf")
             for k in range(n):
-                if F[k][x] < math.inf:
-                    mu_xk = (F[n][x] - F[k][x]) / (n - k)
-                    max_mu_x = max(max_mu_x, mu_xk)
+                if F.get_score(k, x) < float("inf"): 
+                    max_mu_x = max(max_mu_x, F.get_mu(k, x))
             if max_mu_x < min_mu:
                 min_mu = max_mu_x
                 x_star = x
 
-        # Step 13: Find the cycle corresponding to F_n(x*)
-        C_star = []
-        u = x_star
-        k = n
-        while k > 0:
-            for w in range(n):
-                if F[k-1][w] + graph[w][u] == F[k][u]:
-                    C_star.append((w, u))
-                    u = w
-                    break
-            k -= 1
-
-        # Step 14: Return the minimum mean cycle
-        return C_star[::-1], min_mu
+        return F.construct_path_to_node(s_id, x_star), min_mu
 
 
 class MinDistanceAlgorithms:
@@ -854,17 +835,18 @@ class MinCostFlowAlgorithms():
             4 augment 𝑓 along 𝐶 to obtain the new 𝑏-flow 𝑓 ∶= 𝑓_𝐶
         5 return 𝑓 """
 
-        if not UtilAlgorithms.init_b_flow(self.network):
-            logger.error("No feasible b-flow exists returning no solution")
-            return None
+        UtilAlgorithms.init_b_flow(self.network)
 
         while True:
-            cycle = UtilAlgorithms.find_negative_cycle(self.network)
+            logger.info(f"Current flow cost: {self.network.get_flow_cost()}")
+            cycle, mu = UtilAlgorithms.min_mean_cycle(self.network)
             if cycle is None: break
             min_capacity = min(self.network.edges[edge].remaining_capacity() for edge in cycle)
             self.network.augment_along(cycle, min_capacity)
 
-        return sum(arc.flow * arc.weight for arc in self.network.edges.values())
+        logger.info(f"Found minimum cost flow with {self.network.get_flow_cost()} cost\n"
+                    + f"using Minimum-Mean-Cycle-Cancelling: {self.network.flow}")
+        return self.network.get_flow_cost()
 
     def successive_shortest_path(self):
         while True:

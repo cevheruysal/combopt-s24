@@ -588,6 +588,9 @@ class Network(Graph):
         for u, v in P:
             self.augment_edge(u, v, f)
 
+    def get_flow_cost(self):
+        return sum(arc.flow * arc.weight for arc in self.edges.values())
+
     def copy(self):
         return Network(self.id,
                        [v.copy() for v in self.vertices.values()],
