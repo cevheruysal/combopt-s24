@@ -106,12 +106,12 @@ class TestMinDistanceAlgorithms(unittest.TestCase):
         self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))
 
         self.g.direction = True
-        self.g.has_negative_weight = False
+        self.g.has_negative_w = False
         result = self.algorithms.run(MinDistanceAlgorithmsEnum.DIJKSTRA)
         mock_dijkstra.assert_called_once()
         self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))
 
-        self.g.has_negative_weight = True
+        self.g.has_negative_w = True
         result = self.algorithms.run(MinDistanceAlgorithmsEnum.BELLMAN_FORD)
         mock_bellman.assert_called_once()
         self.assertEqual(result, (3, [(1, 2), (2, 3), (3, 4)]))

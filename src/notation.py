@@ -20,40 +20,43 @@ logger = logging.getLogger(__name__)
 class Vertex:
     __slots__ = ["id", 
                  "roots", "leafs", 
-                 "excess_flow", "charge"]
+                 "flow", "charge"]
     
     def __init__(self, Id: int,
                  RootNeighbors: Optional[Set[int]] = None,
                  LeafNeighbors: Optional[Set[int]] = None,
-                 ExcessFlow: float = 0.0, Charge: float = 0.0):
+                 Flow: float = 0.0, Charge: float = 0.0):
         self.id = Id
         self.roots = RootNeighbors if RootNeighbors is not None else set()
         self.leafs = LeafNeighbors if LeafNeighbors is not None else set()
-        self.excess_flow = ExcessFlow
+        self.flow = Flow
         self.charge = Charge
 
-    def set_excess_flow(self, value: float) -> None:
-        self.excess_flow = value
+    def excess_flow(self) -> float:
+        return max(self.flow - self.charge, 0.0)
+    
+    def set_flow(self, value: float) -> None:
+        self.flow = value
 
-    def alter_excess_flow(self, delta: float) -> None:
-        self.excess_flow += delta
+    def alter_flow(self, delta: float) -> None:
+        self.flow += delta
 
     def copy(self):
         return Vertex(self.id,
                       self.roots.copy(), self.leafs.copy(),
-                      self.excess_flow, self.charge)
+                      self.flow, self.charge)
 
     def __hash__(self):
         return hash((self.id,
                      tuple(self.roots), tuple(self.leafs),
-                     self.excess_flow, self.charge))
+                     self.flow, self.charge))
 
     def __eq__(self, other):
         if isinstance(other, type(self)):
             return (self.id == other.id
                     and self.roots == other.roots
                     and self.leafs == other.leafs
-                    and self.excess_flow == other.excess_flow
+                    and self.flow == other.flow
                     and self.charge == other.charge)
         return False
 
@@ -215,28 +218,51 @@ class Arc(Edge):
 
 
 class Graph:
-    __slots__ = ["id", "vertices", "edges", "connected_components",
+    __slots__ = ["id", "vertices", "edges", "conn_comps",
                  "is_acyclical", "is_connected", "direction", "has_negative_weight"]
 
     def __init__(self, Id: Union[int, str], V: List[Vertex] = [], E: List[Edge] = []):
         self.id: int = Id
         self.vertices: Dict[int, Vertex] = {}
         self.edges: Dict[Tuple[int, int], Edge] = {}
-        self.connected_components = UnionFind([])
+        self.conn_comps = UnionFind([])
 
         self.is_acyclical: Optional[bool] = None
         self.is_connected: Optional[bool] = None
         self.direction: Optional[GraphDirection] = None
-        self.has_negative_weight: Optional[bool] = None
+        self.has_negative_w: Optional[bool] = None
 
         self.init_vertices(V)
         self.init_edges(E)
         self.update_meta()
 
+    def del_vertex(self, vertex_id:int) -> None:
+        del self.vertices[vertex_id]
+
     def init_vertices(self, V: List[Vertex]) -> None:
         for v in sorted(V, key=lambda x: x.id):
             self.vertices[v.id] = v
-            self.connected_components.add(v.id)
+            self.conn_comps.add(v.id)
+
+    def del_edge(self, edge_id:Union[int, Tuple[int, int]]) -> None:
+        if isinstance(edge_id, int):
+            edge_key = next((key for key, e in self.edges.items() if e.id == edge_id), None)
+        elif isinstance(edge_id, tuple):
+            edge_key = next((key for key in self.edges.keys() if key == edge_id), None)
+        if edge_key is None:
+            logger.error("Edge that was tried to be removed couldn't be found!")
+            return
+        
+        edge_dir = self.edges[edge_key].direction
+        u, v = edge_key
+        
+        self.vertices[u].leafs.remove(v)
+        self.vertices[v].roots.remove(u)
+        if edge_dir != EdgeDirection.DIRECTED:
+            self.vertices[u].roots.remove(v)
+            self.vertices[v].leafs.remove(u)
+        
+        del self.edges[edge_key]
 
     def add_edge(self, e: Union[Edge, Arc]) -> None:
         v1, v2 = e.incident_vertex_ids
@@ -246,10 +272,10 @@ class Graph:
                 logger.warning(f"Vertex not found: {v}")
                 self.vertices[v] = Vertex(v)
                 logger.warning(f"New vertex created with id: {v}")
-                self.connected_components.add(v)
+                self.conn_comps.add(v)
 
         if not (isinstance(e, Arc) and e.residual_arc):
-            self.connected_components.union(v1, v2)
+            self.conn_comps.union(v1, v2)
             self.vertices[v1].leafs.add(v2)
             self.vertices[v2].roots.add(v1)
 
@@ -261,8 +287,8 @@ class Graph:
 
     def init_edges(self, E: Union[List[Edge], List[Arc]]) -> None:
         constant = len(self.vertices)
-        # E.sort(key=lambda e: e.sort_key(constant))
-        E.sort(key=lambda e: r.randint(0, len(E)))
+        E.sort(key=lambda e: e.sort_key(constant)) 
+        # dict probably decides on the order based on key hash ?
         for e in E: self.add_edge(e)
 
     def is_cyclic_dfs(self, 
@@ -311,7 +337,7 @@ class Graph:
         return False
 
     def get_connected_components(self) -> int:
-        unique_components = {self.connected_components.find(v_id) for v_id in self.vertices}
+        unique_components = {self.conn_comps.find(v_id) for v_id in self.vertices}
         return len(unique_components)
 
     def get_graph_direction(self) -> GraphDirection:
@@ -327,7 +353,7 @@ class Graph:
         self.is_acyclical = not self.is_cyclic()
         self.is_connected = self.get_connected_components() <= 1
         self.direction = self.get_graph_direction()
-        self.has_negative_weight = self.get_has_negative_weight()
+        self.has_negative_w = self.get_has_negative_weight()
 
     def copy(self):
         return Graph(self.id,
@@ -346,7 +372,7 @@ class Graph:
             + "with "
             + (
                 "some negative " 
-                if self.has_negative_weight 
+                if self.has_negative_w 
                 else "all positive ")
             + "edge weights\n"
         )
@@ -391,7 +417,8 @@ class Tree(Forest):
 
 
 class Network(Graph):
-    __slots__ = ["node_levels", "is_st_connected", 
+    __slots__ = ["node_levels", 
+                 "is_st_connected", 
                  "source_node_id", "sink_node_id", "flow"]
 
     def __init__(self, Id: Union[int, str], V: List[Vertex], A: List[Arc],
@@ -437,6 +464,7 @@ class Network(Graph):
         self.edges: Dict[Tuple[int, int], Arc] = {}
         self.connected_components = UnionFind([])
         self.node_levels: Dict[int, int] = None
+        self.flow = f
 
         self.is_acyclical: Optional[bool] = None
         self.is_st_connected: Optional[bool] = None
@@ -445,22 +473,8 @@ class Network(Graph):
 
         self.init_vertices(V)
         self.init_arcs(A)
+        self.update_meta(s, t)
 
-        if s not in self.vertices.keys() or t not in self.vertices.keys():
-            # TODO maybe topologically sort the network and auto assign s and t
-            raise ValueError("Source and sink nodes must be specified for a proper Network")
-        elif s==t:
-            raise ValueError("Source and sink nodes must be different from each other")
-        else:
-            self.source_node_id = s
-            self.sink_node_id = t
-            self.flow = f
-
-        self.update_node_levels()
-        self.update_meta()
-
-        if not self.is_st_connected:
-            raise ValueError("Source and sink nodes must be connected")
 
     def refactor_antiparallel_arcs(self, A: List[Arc]) -> List[Arc]:
         residual_filtered_A = [a for a in A if not a.residual_arc]
@@ -535,25 +549,39 @@ class Network(Graph):
         return self.connected_components.find(self.source_node_id) == \
                self.connected_components.find(self.sink_node_id)
 
-    def update_meta(self) -> None:
-        self.is_acyclical = not self.is_cyclic()
-        self.is_st_connected = self.is_source_and_sink_connected()
-        self.direction = self.get_graph_direction()
-        self.has_negative_weight = self.get_has_negative_weight()
+    def update_meta(self, s: Union[int, str], t: Union[int, str]) -> None:
+        if s not in self.vertices.keys() or t not in self.vertices.keys():
+            # TODO maybe topologically sort the network and auto assign s and t
+            raise logger.error("Source and sink nodes are not specified!!!\n" + 
+                               "dont forget to run update_meta() after specified")
+        elif s==t:
+            raise ValueError("Source and sink nodes must be different from each other")
+        else:
+            self.source_node_id = s
+            self.sink_node_id = t
 
-    def initialize_flow(self) -> None:
+            self.update_node_levels()
+            self.is_acyclical = not self.is_cyclic()
+            self.is_st_connected = self.is_source_and_sink_connected()
+            self.direction = self.get_graph_direction()
+            self.has_negative_weight = self.get_has_negative_weight()
+
+            if not self.is_st_connected:
+                raise ValueError("Source and sink nodes must be connected")
+
+    def init_flow(self) -> None:
         self.flow = 0
         for arc in self.edges.values():
             arc.set_flow(0)
         for vertex in self.vertices.values():
-            vertex.set_excess_flow(0)
+            vertex.set_flow(0)
 
     def augment_edge(self, u: int, v: int, f: float):
         self.edges[(u, v)].alter_flow(f)
         self.edges[(v, u)].alter_flow(-f)
         
-        self.vertices[u].alter_excess_flow(-f)
-        self.vertices[v].alter_excess_flow(+f)
+        self.vertices[u].alter_flow(-f)
+        self.vertices[v].alter_flow(+f)
 
     def augment_along(self, P: List[Tuple[int, int]], f: float, st_path = True):
         if st_path: self.flow += f

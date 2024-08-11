@@ -2,16 +2,16 @@ import heapq
 import logging
 from collections import deque
 from random import choice
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
 from enums import (GraphDirection, MaxFlowAlgorithmsEnum,
-                   MinDistanceAlgorithmsEnum, MinFlowAlgorithmsEnum,
+                   MinCostFlowAlgorithmsEnum, MinDistanceAlgorithmsEnum,
                    MinSpanningTreeAlgorithmsEnum)
-from graph_utils import (delta, minimum_cost_edge_in_delta)
-from notation import Edge, Graph, LinearProgram, Network, Tree, Vertex
-from util_structs import VertexProp, UnionFind
+from graph_utils import delta, minimum_cost_edge_in_delta
+from notation import Arc, Edge, Graph, LinearProgram, Network, Tree, Vertex
+from util_structs import UnionFind, VertexProp
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -153,7 +153,7 @@ class UtilAlgorithms:
         1 initialize 𝑓(e) := ⎧ 𝑢(𝑒), for 𝑒 ∈ 𝛿_out(𝑠)
                              ⎨ 0,    for 𝑒 ∈ 𝐸(𝐺) ∖ 𝛿_out(𝑠) """
 
-        N.initialize_flow()
+        N.init_flow()
         s = N.source_node_id
         for v in N.vertices[s].leafs:
             arc = N.edges[(s, v)]
@@ -179,7 +179,7 @@ class UtilAlgorithms:
         3 augment 𝑓 along 𝑒 by 𝛾
         4 return 𝑓 """
 
-        gamma = min(N.vertices[v].excess_flow, 
+        gamma = min(N.vertices[v].excess_flow(), 
                     N.edges[(v, w)].remaining_capacity())
         N.augment_edge(v, w, gamma)
 
@@ -217,16 +217,128 @@ class UtilAlgorithms:
 
     @staticmethod
     def find_negative_cycle(G:Graph) -> Optional[List[Edge]]:
-        if not G.has_negative_weight: return None
+        if not G.has_negative_w: return None
 
         negative_weighted_edges = [e for e in G.edges.values() if e.weight < 0]
         negative_weighted_edges.sort(key=lambda e: e.weight)
         for edge in negative_weighted_edges:
             u, v = edge.incident_vertex_ids
-            cost, path = UtilAlgorithms.find_negative_cycle_dfs(G, u, v, edge.weight, [edge])
+            _, path = UtilAlgorithms.find_negative_cycle_dfs(G, u, v, edge.weight, [edge])
             if path is not None:
                 return path
         return None
+    
+    @staticmethod
+    def init_b_flow(N:Network) -> None:
+        edge_id = max((a.id for a in N.edges.values())) + 1
+        s_id = max((v for v in N.vertices)) + 1
+        t_id = s_id + 1
+
+        added_edges:Set[Tuple[int, int]] = {}
+        added_vertices = {s_id, t_id}
+
+        for id, vertex in N.vertices.items():
+            if id == s_id or id == t_id: continue
+            if vertex.charge > 0:
+                N.add_edge(Arc(edge_id, s_id, id, U=vertex.charge, R=False)); edge_id += 1
+                N.add_edge(Arc(edge_id, id, s_id, R=True)); edge_id += 1
+            
+                added_edges.add((s_id, id))
+                added_edges.add((id, s_id))
+            
+            elif vertex.charge < 0:
+                N.add_edge(Arc(edge_id, id, t_id, U=-vertex.charge, R=False)); edge_id += 1
+                N.add_edge(Arc(edge_id, t_id, id, R=True)); edge_id += 1
+
+                added_edges.add((t_id, id))
+                added_edges.add((id, t_id))
+        
+        N.update_meta()
+
+        maxFlowInstance = MaxFlowAlgorithms(N)
+        maxFlowInstance.run()
+
+        for edge_id in added_edges:
+            if edge_id in N.edges:
+                N.del_edge(edge_id)
+
+        for vertex_id in added_vertices:
+            if vertex_id in N.vertices:
+                N.del_vertex(vertex_id)
+    
+    def min_mean_cycle(N:Network) -> Optional[Tuple[List[Arc], float]]:
+        """
+        input : a digraph 𝐺 = (𝑉, 𝐸) with edge costs 𝑐 ∶ 𝐸 → Q
+        output: a minimum mean cycle 𝐶∗ of mean cost 𝜇(𝐺) in 𝐺
+        1 add a node 𝑠 to 𝐺
+        2 add edges (𝑠, 𝑥) with cost 𝑐(𝑠, 𝑥) = 0 for all 𝑥 ∈ 𝑉
+        3 set 𝐹_0(𝑠) = 0 and _𝐹0(𝑥) = ∞ for all 𝑥 ∈ 𝑉
+        4 for 𝑘 = 1, … , 𝑛 do
+            5 for 𝑥 ∈ 𝑉 do
+                6 set _𝐹𝑘(𝑥) = ∞
+                7 for (𝑤, 𝑥) ∈ 𝛿^in(𝑥) do
+                    8 if _𝐹𝑘−1(𝑤) + 𝑐(𝑤, 𝑥) <_ 𝐹𝑘(𝑥) then
+                    9 set _𝐹𝑘(𝑥) = _𝐹𝑘−1(𝑤) + 𝑐(𝑤, 𝑥)
+        10 if _𝐹𝑛(𝑥) = ∞ for all 𝑥 ∈ 𝑉 then
+            11 terminate, 𝐺 is acyclic
+        12 compute  𝜇(𝐺) = mi n𝑥∈𝑉 max_{𝐹𝑛(𝑥) _− 𝐹𝑘( 𝑥)𝑛 −  𝑘∶ 0 ≤ 𝑘 ≤ 𝑛 − 1 ∶_ 𝐹𝑘(𝑥) < 
+                     ∞}𝑥∗ = arg min𝑥∈𝑉 m_ax{𝐹𝑛(𝑥_) − 𝐹𝑘( 𝑥) 𝑛 − 𝑘∶ 0 ≤ 𝑘 ≤ 𝑛 − _1 ∶ 𝐹𝑘(𝑥) < ∞}
+        13 let 𝐶∗ be the cycle on the edge progression corresponding to _𝐹𝑛(𝑥∗)
+        14 return 𝐶∗ """
+
+        # Step 1: Add a node s to G
+        s = len(graph)
+        graph[s] = {x: 0 for x in range(len(graph))}
+
+        n = len(graph)
+        
+        # Step 3: Initialize F_0
+        F = [[math.inf] * n for _ in range(n + 1)]
+        F[0][s] = 0
+
+        # Step 4: For k = 1, ..., n
+        for k in range(1, n + 1):
+            # Step 5: For each x in V
+            for x in range(n):
+                F[k][x] = math.inf
+                # Step 7: For each (w, x) in δ^in(x)
+                for w in range(n):
+                    if w in graph and x in graph[w]:
+                        # Step 8: Update F_k(x)
+                        if F[k-1][w] + graph[w][x] < F[k][x]:
+                            F[k][x] = F[k-1][w] + graph[w][x]
+
+        # Step 10: Check if G is acyclic
+        if all(F[n][x] == math.inf for x in range(n)):
+            return None  # G is acyclic
+
+        # Step 12: Compute μ(G) and find x*
+        min_mu = math.inf
+        x_star = None
+        for x in range(n):
+            max_mu_x = -math.inf
+            for k in range(n):
+                if F[k][x] < math.inf:
+                    mu_xk = (F[n][x] - F[k][x]) / (n - k)
+                    max_mu_x = max(max_mu_x, mu_xk)
+            if max_mu_x < min_mu:
+                min_mu = max_mu_x
+                x_star = x
+
+        # Step 13: Find the cycle corresponding to F_n(x*)
+        C_star = []
+        u = x_star
+        k = n
+        while k > 0:
+            for w in range(n):
+                if F[k-1][w] + graph[w][u] == F[k][u]:
+                    C_star.append((w, u))
+                    u = w
+                    break
+            k -= 1
+
+        # Step 14: Return the minimum mean cycle
+        return C_star[::-1], min_mu
 
 
 class MinDistanceAlgorithms:
@@ -242,10 +354,10 @@ class MinDistanceAlgorithms:
         if self.graph.direction is GraphDirection.DIRECTED and self.graph.is_acyclical:
             logger.info("The graph is directed and acyclic, using Topological Sort to find minimum distance")
             result = self.topological_sort()
-        elif self.graph.direction is GraphDirection.DIRECTED and not self.graph.has_negative_weight:
+        elif self.graph.direction is GraphDirection.DIRECTED and not self.graph.has_negative_w:
             logger.info("The graph is directed and doesn't have negative weights, using Dijkstra's to find minimum distance")
             result = self.dijkstras()
-        elif self.graph.has_negative_weight:
+        elif self.graph.has_negative_w:
             logger.info("The graph is either undirected or there is negative weighted edges, using Bellman-Ford's to find minimum distance")
             result = self.bellman_fords()
         else:
@@ -585,7 +697,7 @@ class MaxFlowAlgorithms():
             5 augment 𝑓 along 𝑃 by 𝛾
         6 return 𝑓"""
 
-        self.network.initialize_flow()
+        self.network.init_flow()
         augmentation_count = 0
 
         while True:
@@ -613,7 +725,7 @@ class MaxFlowAlgorithms():
         It can be implemented such that it computes a maximum network flow in time 𝒪(𝑚^2*𝑛)
         """
 
-        self.network.initialize_flow()
+        self.network.init_flow()
         augmentation_count = 0
 
         while True:
@@ -643,7 +755,7 @@ class MaxFlowAlgorithms():
             9 determine 𝑁_𝑓 with the current flow 𝑓
         10 return 𝑓"""
 
-        self.network.initialize_flow()
+        self.network.init_flow()
 
         while self.network.update_node_levels():
             node, throughput = UtilAlgorithms.min_throughput_node(self.network)
@@ -680,7 +792,7 @@ class MaxFlowAlgorithms():
         active_nodes = [v for v in self.network.vertices.values()
                         if v.id != self.network.source_node_id
                        and v.id != self.network.sink_node_id
-                       and v.excess_flow > 0]
+                       and v.excess_flow() > 0]
 
         while active_nodes:
             pushed = False
@@ -693,11 +805,11 @@ class MaxFlowAlgorithms():
                     pushed = True
                     UtilAlgorithms.push(self.network, node.id, w)
 
-                    if node.excess_flow == 0: active_nodes.remove(node)
+                    if node.excess_flow() == 0: active_nodes.remove(node)
                     leaf = self.network.vertices[w]
                     if (leaf.id != self.network.source_node_id
                         and leaf.id != self.network.sink_node_id
-                        and leaf.excess_flow > 0 
+                        and leaf.excess_flow() > 0 
                         and leaf not in active_nodes):
                         active_nodes.append(leaf)
                         
@@ -706,24 +818,24 @@ class MaxFlowAlgorithms():
             if not pushed:
                 UtilAlgorithms.relabel(self.network, phi, node.id)
 
-        self.network.flow = self.network.vertices[self.network.sink_node_id].excess_flow
+        self.network.flow = self.network.vertices[self.network.sink_node_id].excess_flow()
 
         logger.info(f"Found maximum flow using Push-Relabel algorithm: {self.network.flow}")
         return self.network.flow
 
 
-class MinFlowAlgorithms():
+class MinCostFlowAlgorithms():
     def __init__(self, N:Network):
         """
          """
 
         self.network = N
 
-    def run(self, use_algorithm:MinFlowAlgorithmsEnum = 0) -> int:
+    def run(self, use_algorithm:MinCostFlowAlgorithmsEnum = 0) -> int:
         result = None
 
         if use_algorithm.value > 0:
-            logger.info(f"Trying to use {use_algorithm.name} to find min flow")
+            logger.info(f"Trying to use {use_algorithm.name} to find min cost flow")
 
             match use_algorithm.value:
                 case 1: result = self.minimum_mean_cycle_cancelling()
@@ -733,6 +845,19 @@ class MinFlowAlgorithms():
         return result
 
     def minimum_mean_cycle_cancelling(self):
+        """
+        input : a minimum cost flow instance 𝑁 = (𝐺, 𝑢, 𝑐, 𝑏)
+        output: a minimum cost 𝑏-flow for the given instance
+        1 initialize 𝑓 as any 𝑏-flow (or stop if no 𝑏-flow exists) using a maxflow algorithm
+        2 while there exists a cycle of negative cost in 𝐺_𝑓 do
+            3 determine a cycle 𝐶 in 𝐺_𝑓 that minimizes 𝑐_𝑓(𝐶)/|𝐶| < 0
+            4 augment 𝑓 along 𝐶 to obtain the new 𝑏-flow 𝑓 ∶= 𝑓_𝐶
+        5 return 𝑓 """
+
+        if not UtilAlgorithms.init_b_flow(self.network):
+            logger.error("No feasible b-flow exists returning no solution")
+            return None
+
         while True:
             cycle = UtilAlgorithms.find_negative_cycle(self.network)
             if cycle is None: break

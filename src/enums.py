@@ -36,7 +36,7 @@ class MaxFlowAlgorithmsEnum(Enum):
     PUSH_RELABEL = 4
 
 
-class MinFlowAlgorithmsEnum(Enum):
+class MinCostFlowAlgorithmsEnum(Enum):
     AUTOMATIC = 0
     MINIMUM_MEAN_CYCLE_CANCELLING = 1
     SUCCESSIVE_SHORTEST_PATH = 2
